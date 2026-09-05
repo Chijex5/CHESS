@@ -1,0 +1,429 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ── Theme tokens ───────────────────────────────────────────────────────────
+   Design direction: 2D orthographic board, realistic *materials*.
+   FIDE C.02 requires pieces and boards be non-shiny with a dull/neutral
+   finish, light pieces "white or cream", dark ones "brown or black", and
+   boards in walnut/maple/beech tones. Every surface below honours that:
+   warm neutrals, no glassmorphism, no cold blue-grey.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /* Literal family names — @theme inline resolves at parse time, so a
+     var() pointing at a runtime next/font variable silently yields nothing. */
+  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+  --font-serif: "Source Serif 4", "Source Serif 4 Fallback", ui-serif, Georgia, serif;
+  --font-heading: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+
+  /* ── Type scale ─────────────────────────────────────────────────────────────
+     Five steps, and nothing in between. Every size in the app resolves to one
+     of these; there are no one-off pixel values left.
+
+       2xs  11px  numerals, coordinates, counts, eyebrow labels
+       xs   12px  secondary metadata
+       sm   13px  interface body and controls
+       base 15px  the coach's serif voice, card titles
+       lg+        Tailwind's own steps, untouched
+
+     sm sits at 13px rather than Tailwind's 14 because this is a board-first
+     layout: the board is the largest thing on screen and the chrome around it
+     should not compete. base sits at 15px because the coach's prose is the one
+     thing here meant to be *read* rather than scanned.
+     ─────────────────────────────────────────────────────────────────────────── */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1.4;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1.45;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.55;
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* Board materials */
+  --color-board-light: var(--board-light);
+  --color-board-dark: var(--board-dark);
+  --color-board-frame: var(--board-frame);
+  --color-board-edge: var(--board-edge);
+  --color-piece-light: var(--piece-light);
+  --color-piece-light-edge: var(--piece-light-edge);
+  --color-piece-dark: var(--piece-dark);
+  --color-piece-dark-edge: var(--piece-dark-edge);
+
+  /* Board affordances */
+  --color-hl-lastmove: var(--hl-lastmove);
+  --color-hl-selected: var(--hl-selected);
+  --color-hl-legal: var(--hl-legal);
+  --color-hl-check: var(--hl-check);
+  --color-arrow-best: var(--arrow-best);
+  --color-arrow-played: var(--arrow-played);
+  --color-arrow-hint: var(--arrow-hint);
+
+  /* Move quality — paired with !!/!/!?/?!/?/?? glyphs so colour is never
+     the sole carrier of meaning.
+
+     Two ramps per band, because one cannot do both jobs. `--q-*` is the *mark*:
+     graph dots, arrow fills, tinted backgrounds — chosen for saturation against
+     a card. `--q-*-ink` is the *text*: the same hue pulled to a lightness that
+     clears 4.5:1 on the surface it sits on. Painting label text with the mark
+     colour is what made the review chips glow. */
+  --color-q-brilliant: var(--q-brilliant);
+  --color-q-best: var(--q-best);
+  --color-q-good: var(--q-good);
+  --color-q-inaccuracy: var(--q-inaccuracy);
+  --color-q-mistake: var(--q-mistake);
+  --color-q-blunder: var(--q-blunder);
+
+  --color-q-brilliant-ink: var(--q-brilliant-ink);
+  --color-q-best-ink: var(--q-best-ink);
+  --color-q-good-ink: var(--q-good-ink);
+  --color-q-inaccuracy-ink: var(--q-inaccuracy-ink);
+  --color-q-mistake-ink: var(--q-mistake-ink);
+  --color-q-blunder-ink: var(--q-blunder-ink);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* ── Light: warm paper / study ─────────────────────────────────────────────── */
+:root {
+  --radius: 0.625rem;
+
+  --background: oklch(0.977 0.006 84);
+  --foreground: oklch(0.216 0.012 62);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.216 0.012 62);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.216 0.012 62);
+  --primary: oklch(0.512 0.089 66);
+  --primary-foreground: oklch(0.985 0.008 84);
+  --secondary: oklch(0.948 0.010 82);
+  --secondary-foreground: oklch(0.286 0.016 62);
+  --muted: oklch(0.948 0.010 82);
+  --muted-foreground: oklch(0.505 0.014 68);
+  --accent: oklch(0.936 0.018 80);
+  --accent-foreground: oklch(0.286 0.016 62);
+  --destructive: oklch(0.556 0.196 26);
+  --border: oklch(0.888 0.012 78);
+  --input: oklch(0.888 0.012 78);
+  --ring: oklch(0.646 0.086 70);
+
+  --chart-1: oklch(0.646 0.130 70);
+  --chart-2: oklch(0.556 0.104 152);
+  --chart-3: oklch(0.586 0.156 28);
+  --chart-4: oklch(0.686 0.128 92);
+  --chart-5: oklch(0.506 0.088 250);
+
+  --sidebar: oklch(0.962 0.008 84);
+  --sidebar-foreground: oklch(0.216 0.012 62);
+  --sidebar-primary: oklch(0.512 0.089 66);
+  --sidebar-primary-foreground: oklch(0.985 0.008 84);
+  --sidebar-accent: oklch(0.936 0.018 80);
+  --sidebar-accent-foreground: oklch(0.286 0.016 62);
+  --sidebar-border: oklch(0.888 0.012 78);
+  --sidebar-ring: oklch(0.646 0.086 70);
+}
+
+/* ── Dark: lamp-lit analysis room (default) ────────────────────────────────── */
+.dark {
+  --background: oklch(0.163 0.008 62);
+  --foreground: oklch(0.942 0.007 84);
+  --card: oklch(0.207 0.009 62);
+  --card-foreground: oklch(0.942 0.007 84);
+  --popover: oklch(0.226 0.010 62);
+  --popover-foreground: oklch(0.942 0.007 84);
+  --primary: oklch(0.788 0.108 78);
+  --primary-foreground: oklch(0.226 0.024 66);
+  --secondary: oklch(0.268 0.011 62);
+  --secondary-foreground: oklch(0.942 0.007 84);
+  --muted: oklch(0.268 0.011 62);
+  --muted-foreground: oklch(0.702 0.013 76);
+  --accent: oklch(0.302 0.016 68);
+  --accent-foreground: oklch(0.952 0.008 84);
+  --destructive: oklch(0.665 0.185 26);
+  --border: oklch(0.882 0.030 78 / 12%);
+  --input: oklch(0.882 0.030 78 / 16%);
+  --ring: oklch(0.606 0.062 74);
+
+  --chart-1: oklch(0.788 0.128 78);
+  --chart-2: oklch(0.706 0.118 154);
+  --chart-3: oklch(0.666 0.176 26);
+  --chart-4: oklch(0.812 0.132 92);
+  --chart-5: oklch(0.646 0.092 252);
+
+  --sidebar: oklch(0.186 0.009 62);
+  --sidebar-foreground: oklch(0.942 0.007 84);
+  --sidebar-primary: oklch(0.788 0.108 78);
+  --sidebar-primary-foreground: oklch(0.226 0.024 66);
+  --sidebar-accent: oklch(0.302 0.016 68);
+  --sidebar-accent-foreground: oklch(0.952 0.008 84);
+  --sidebar-border: oklch(0.882 0.030 78 / 12%);
+  --sidebar-ring: oklch(0.606 0.062 74);
+}
+
+/* ── Move-quality scale ─────────────────────────────────────────────────────── */
+:root {
+  --q-brilliant: oklch(0.606 0.118 196);
+  --q-best: oklch(0.556 0.104 176);
+  --q-good: oklch(0.566 0.108 152);
+  --q-inaccuracy: oklch(0.686 0.126 88);
+  --q-mistake: oklch(0.628 0.158 54);
+  --q-blunder: oklch(0.556 0.196 26);
+
+  /* Text-safe: ≥4.5:1 on --card (white). The amber bands also rotate a few
+     degrees warmer, because a dark yellow reads as olive rather than caution. */
+  --q-brilliant-ink: oklch(0.472 0.106 202);
+  --q-best-ink: oklch(0.446 0.092 178);
+  --q-good-ink: oklch(0.452 0.096 154);
+  --q-inaccuracy-ink: oklch(0.474 0.098 76);
+  --q-mistake-ink: oklch(0.474 0.146 46);
+  --q-blunder-ink: oklch(0.468 0.184 26);
+}
+.dark {
+  --q-brilliant: oklch(0.756 0.118 196);
+  --q-best: oklch(0.736 0.104 176);
+  --q-good: oklch(0.746 0.118 152);
+  --q-inaccuracy: oklch(0.826 0.132 88);
+  --q-mistake: oklch(0.766 0.152 54);
+  --q-blunder: oklch(0.688 0.186 26);
+
+  --q-brilliant-ink: oklch(0.822 0.098 198);
+  --q-best-ink: oklch(0.816 0.088 178);
+  --q-good-ink: oklch(0.820 0.100 154);
+  --q-inaccuracy-ink: oklch(0.868 0.112 88);
+  --q-mistake-ink: oklch(0.828 0.126 54);
+  --q-blunder-ink: oklch(0.774 0.148 26);
+}
+
+/* ── Board materials ────────────────────────────────────────────────────────
+   Three sets. Walnut/maple is the default study set; "tournament" is the
+   green-and-buff vinyl roll-up that competitive chess is *actually* played
+   on; "slate" is a cool stone alternative for the light shell.
+   ─────────────────────────────────────────────────────────────────────────── */
+[data-board="walnut"] {
+  --board-light: oklch(0.826 0.042 74);
+  --board-dark: oklch(0.462 0.058 48);
+  --board-frame: oklch(0.318 0.036 46);
+  --board-edge: oklch(0.238 0.028 44);
+}
+.dark [data-board="walnut"] {
+  --board-light: oklch(0.772 0.044 74);
+  --board-dark: oklch(0.414 0.054 46);
+  --board-frame: oklch(0.256 0.030 44);
+  --board-edge: oklch(0.176 0.020 42);
+}
+
+[data-board="tournament"] {
+  --board-light: oklch(0.902 0.028 96);
+  --board-dark: oklch(0.512 0.062 148);
+  --board-frame: oklch(0.322 0.038 150);
+  --board-edge: oklch(0.242 0.028 150);
+}
+.dark [data-board="tournament"] {
+  --board-light: oklch(0.836 0.030 96);
+  --board-dark: oklch(0.452 0.058 148);
+  --board-frame: oklch(0.252 0.030 150);
+  --board-edge: oklch(0.176 0.020 150);
+}
+
+[data-board="slate"] {
+  --board-light: oklch(0.868 0.008 250);
+  --board-dark: oklch(0.512 0.022 250);
+  --board-frame: oklch(0.322 0.016 250);
+  --board-edge: oklch(0.242 0.012 250);
+}
+.dark [data-board="slate"] {
+  --board-light: oklch(0.792 0.008 250);
+  --board-dark: oklch(0.442 0.020 250);
+  --board-frame: oklch(0.252 0.014 250);
+  --board-edge: oklch(0.172 0.010 250);
+}
+
+/* Pieces: same mould, two materials. Cream boxwood and ebonised walnut,
+   each with a rim tone because real pieces catch light on the turned edge. */
+:root {
+  --piece-light: oklch(0.946 0.018 86);
+  --piece-light-edge: oklch(0.606 0.036 68);
+  --piece-dark: oklch(0.268 0.020 48);
+  --piece-dark-edge: oklch(0.588 0.032 62);
+
+  --hl-lastmove: oklch(0.812 0.132 86 / 0.45);
+  --hl-selected: oklch(0.792 0.148 92 / 0.62);
+  --hl-legal: oklch(0.286 0.020 60 / 0.26);
+  --hl-check: oklch(0.596 0.212 26 / 0.60);
+  --arrow-best: oklch(0.552 0.108 156 / 0.82);
+  --arrow-played: oklch(0.548 0.158 28 / 0.78);
+  /* A suggestion, not a verdict: the app's own amber rather than the green that
+     elsewhere means "this was the right move". */
+  --arrow-hint: oklch(0.606 0.132 74 / 0.85);
+}
+.dark {
+  --piece-light: oklch(0.938 0.020 86);
+  --piece-light-edge: oklch(0.526 0.034 66);
+  --piece-dark: oklch(0.212 0.018 48);
+  --piece-dark-edge: oklch(0.548 0.030 62);
+
+  --hl-legal: oklch(0.156 0.014 60 / 0.30);
+  --arrow-hint: oklch(0.782 0.128 78 / 0.88);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  /* Notation, evals and clocks must not reflow as digits change. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+}
+
+@layer components {
+  /* Wood grain, procedurally. Two off-axis gradient stacks at low contrast —
+     FIDE wants a dull finish, so there is deliberately no specular sheen. */
+  .board-grain {
+    background-image:
+      repeating-linear-gradient(
+        94deg,
+        oklch(0 0 0 / 0.035) 0px,
+        oklch(0 0 0 / 0) 2px,
+        oklch(1 0 0 / 0.022) 4px,
+        oklch(0 0 0 / 0) 7px
+      ),
+      repeating-linear-gradient(
+        87deg,
+        oklch(0 0 0 / 0.02) 0px,
+        oklch(0 0 0 / 0) 11px,
+        oklch(0 0 0 / 0.028) 19px
+      );
+  }
+
+  /* Turned-edge relief on the frame: light from upper-left, felt-dark below. */
+  .board-frame-relief {
+    box-shadow:
+      inset 0 1px 0 oklch(1 0 0 / 0.10),
+      inset 0 0 0 1px oklch(0 0 0 / 0.22),
+      0 1px 2px oklch(0 0 0 / 0.20),
+      0 12px 28px -10px oklch(0 0 0 / 0.45),
+      0 30px 60px -30px oklch(0 0 0 / 0.55);
+  }
+
+  /* Pieces sit *on* the board: a tight contact shadow plus a longer cast. */
+  .piece-lift {
+    filter:
+      drop-shadow(0 1px 0.5px oklch(0 0 0 / 0.34))
+      drop-shadow(0 3px 4px oklch(0 0 0 / 0.24));
+  }
+  .piece-lift-raised {
+    filter:
+      drop-shadow(0 2px 1px oklch(0 0 0 / 0.30))
+      drop-shadow(0 10px 14px oklch(0 0 0 / 0.34));
+  }
+
+  /* Paper grain for the coach's scoresheet surface. */
+  .paper-grain {
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        oklch(0 0 0 / 0.014) 0px,
+        oklch(0 0 0 / 0) 1px,
+        oklch(0 0 0 / 0) 3px
+      );
+  }
+
+  /* Section eyebrow. This exact quadruple appeared in seven places with three
+     different spellings, which is most of why the app read as machine-assembled;
+     it is one class now. */
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.07em] text-muted-foreground;
+  }
+
+  /* Withheld value. Used where a number exists but the player has chosen not to
+     see it yet — a diagonal hatch says "covered", where the word "hidden" said
+     "unfinished". */
+  .hatch {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--muted) 0px,
+      var(--muted) 3px,
+      transparent 3px,
+      transparent 6px
+    );
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 9999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
