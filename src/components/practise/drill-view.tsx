@@ -241,8 +241,9 @@ export function DrillView() {
             flipped={drill.ply % 2 === 0}
             arrows={arrows}
             selected={selected}
-            legalTargets={selected ? (legal[selected] ?? []) : []}
+            legalMoves={legal}
             onSquareClick={onSquareClick}
+            onMove={(from, to) => void attempt(from, to)}
             interactive={!settled && !judging}
             announcement={
               revealed

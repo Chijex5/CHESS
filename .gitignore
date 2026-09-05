@@ -42,3 +42,7 @@ next-env.d.ts
 
 # Copied from node_modules by scripts/copy-engine.mjs
 /public/engine/
+
+# Agent tooling installed by `vercel integration add` (Clerk's skills).
+/.agents
+/.claude

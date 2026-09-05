@@ -13,6 +13,7 @@ export function PlayerStrip({
   advantage,
   thinking = false,
   active = false,
+  trailing,
   className,
 }: {
   name: string;
@@ -23,6 +24,8 @@ export function PlayerStrip({
   /** Engine is searching for its reply. */
   thinking?: boolean;
   active?: boolean;
+  /** Trailing slot, for the clock. Nothing else belongs on this row. */
+  trailing?: React.ReactNode;
   className?: string;
 }) {
   return (
@@ -65,6 +68,7 @@ export function PlayerStrip({
           Thinking
         </span>
       )}
+      {trailing}
     </div>
   );
 }

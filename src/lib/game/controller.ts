@@ -11,6 +11,8 @@ import {
   warnsOnHangingPiece,
 } from "@/lib/store/settings-store";
 import { useHint } from "@/lib/store/hint-store";
+import { useClock } from "@/lib/store/clock-store";
+import { timeControlFor } from "./time-controls";
 import { classify, evalToWinPct } from "@/lib/chess/eval";
 import { splitUci, uciLineToSan, uciOf, uciToSan } from "./notation";
 import { requestExplanation, requestHintReason } from "@/lib/coach/client";
@@ -21,6 +23,7 @@ import type {
   PieceColor,
   PieceType,
   PlyRecord,
+  Side,
   Square,
 } from "@/lib/chess/types";
 
@@ -127,7 +130,15 @@ function terminalEval(fen: string): Evaluation | null {
   return { kind: "cp", cp: 0 };
 }
 
-async function analyse(ply: number, fen: string) {
+/**
+ * Searches one position at the fixed analysis depth and files the result.
+ *
+ * `live` marks the position the player is actually looking at. It does two things:
+ * the search overtakes queued commentary, and it is the only kind of search that
+ * touches `settled` — a shimmering eval bar and a spinning hint button should mean
+ * "we are still working out *this* position", not "the analyst is busy somewhere".
+ */
+async function analyse(ply: number, fen: string, live = false) {
   const engine = useEngine.getState();
 
   /* A finished position has no move to search and no score to find — the result
@@ -143,11 +154,12 @@ async function analyse(ply: number, fen: string) {
     return entry;
   }
 
-  engine.patch({ settled: false });
+  if (live) engine.patch({ settled: false });
   try {
     const result = await getAnalyst().search({
       fen,
       depth: ANALYSIS_DEPTH,
+      priority: live,
       onInfo: (info) => {
         if (info.depth < COMMIT_DEPTH) return;
         if (useGame.getState().plies.length !== ply) return; // stale search
@@ -206,7 +218,6 @@ async function judgeAndExplain(record: PlyRecord) {
   const threshold = SENSITIVITY_THRESHOLD[settings.sensitivity];
   const praiseworthy = isBest && settings.praiseGoodMoves;
   if (drop < threshold && !praiseworthy) return;
-  if (settings.timing === "post-game" && useGame.getState().status !== "over") return;
 
   const annotation = {
     ply: record.ply,
@@ -233,6 +244,39 @@ async function judgeAndExplain(record: PlyRecord) {
   await requestExplanation(annotation, settings, controller.signal);
 }
 
+/* ── When the coach speaks ────────────────────────────────────────────────────
+   Three settings, and until now two of them did the same thing: `immediate` and
+   `after-reply` both fired the moment you moved, and `post-game` dropped every
+   note but the last, because only the final ply was ever re-judged at the end.
+
+   Each mode now means what it says:
+     immediate    — judge as soon as you move, mid-opponent-think
+     after-reply  — hold it until the opponent has answered, so the note lands on
+                    a position you are actually looking at rather than one that is
+                    about to change under you
+     post-game    — nothing during the game; the whole set at the end
+   `deferred` holds the plies owed an explanation under the latter two. */
+let deferred: PlyRecord[] = [];
+
+function scheduleExplanation(record: PlyRecord) {
+  const { timing } = useSettings.getState();
+  if (timing === "immediate") {
+    void judgeAndExplain(record);
+    return;
+  }
+  deferred.push(record);
+}
+
+/** Pays out whatever `scheduleExplanation` has been holding. Sequential on
+ *  purpose: these all queue on the one analyst worker, and firing a game's worth
+ *  of searches at once would make the last note arrive no sooner while making the
+ *  first arrive later. */
+async function flushDeferred() {
+  const owed = deferred;
+  deferred = [];
+  for (const record of owed) await judgeAndExplain(record);
+}
+
 let starting = false;
 
 export async function startGame() {
@@ -248,10 +292,15 @@ export async function startGame() {
   coachAborts = new Map();
   hintAbort?.abort();
   useHint.getState().clear();
+  deferred = [];
   chess = new Chess();
   useCoach.getState().clear();
   useEngine.getState().reset();
   useGame.getState().reset(playerColor);
+
+  const control = timeControlFor(settings.timeControl);
+  useClock.getState().reset(control.initialMs, control.incrementMs);
+
   syncPosition();
   announce(null);
 
@@ -275,7 +324,12 @@ export async function startGame() {
     starting = false;
   }
 
-  void analyse(0, chess.fen());
+  /* The clock starts here, not above: booting 7 MB of WebAssembly takes about a
+     second, and charging the player for the app's own startup is the kind of
+     unfairness nobody would report but everybody would feel. */
+  if (control.initialMs > 0) useClock.getState().handOver("white");
+
+  void analyse(0, chess.fen(), true);
   if (playerColor === "b") void engineReply();
 }
 
@@ -376,22 +430,25 @@ export async function playMove(
 
   const result = resultOf(chess, game.playerColor);
   if (result) {
+    useClock.getState().stop();
     useGame.getState().patch({ status: "over", result });
     playCue(outcomeCue(result));
+    deferred.push(record);
     void finishAnalysis(record);
     return true;
   }
+  useClock.getState().handOver(record.side === "white" ? "black" : "white");
 
   // Judging runs on the analyst worker; the reply runs on the opponent worker.
   // Neither waits for the other, so commentary never delays the game.
-  void judgeAndExplain(record);
+  scheduleExplanation(record);
   void engineReply();
   return true;
 }
 
 async function finishAnalysis(record: PlyRecord) {
-  await analyse(record.ply, record.fenAfter);
-  await judgeAndExplain(record);
+  await analyse(record.ply, record.fenAfter, true);
+  await flushDeferred();
 }
 
 async function engineReply() {
@@ -416,9 +473,17 @@ async function engineReply() {
     playCue(cueForMove(move));
 
     const outcome = resultOf(chess, game.playerColor);
+    if (outcome) useClock.getState().stop();
+    else useClock.getState().handOver(record.side === "white" ? "black" : "white");
     game.patch({ status: outcome ? "over" : "playing", result: outcome });
     if (outcome) playCue(outcomeCue(outcome));
-    void analyse(record.ply, record.fenAfter);
+    await analyse(record.ply, record.fenAfter, true);
+
+    /* The reply is on the board, so a note written now describes the position in
+       front of the player. `post-game` keeps waiting unless that reply ended it. */
+    if (outcome || useSettings.getState().timing === "after-reply") {
+      void flushDeferred();
+    }
   } catch (error) {
     useGame.getState().patch({ status: "playing" });
     if ((error as Error).name !== "AbortError") {
@@ -447,15 +512,19 @@ export function retryMove() {
     chess.undo();
   }
   game.truncate(count);
+  /* A move that has been taken back must not still be waiting for a note: the ply
+     it described is gone, and the next move will reuse its number. */
+  deferred = deferred.filter((record) => record.ply <= chess.history().length);
   syncPosition();
   announce(plies.at(-1 - count) ?? null);
   playCue("back");
-  void analyse(chess.history().length, chess.fen());
+  void analyse(chess.history().length, chess.fen(), true);
 }
 
 export function resign() {
   const game = useGame.getState();
   if (game.status === "over") return;
+  useClock.getState().stop();
   playCue("loss");
   game.patch({
     status: "over",
@@ -467,6 +536,30 @@ export function resign() {
       playerWon: false,
     },
   });
+  // The game is over, so anything `after-reply` or `post-game` was holding is due.
+  void flushDeferred();
+}
+
+/** A clock reached zero. Called by the clock component, which is the only thing
+ *  watching; guarded so a second call after the game is over does nothing. */
+export function flagFall(side: Side) {
+  const game = useGame.getState();
+  if (game.status === "over") return;
+  const playerSide: Side = game.playerColor === "w" ? "white" : "black";
+  const playerWon = side !== playerSide;
+  useClock.getState().stop();
+  playCue(playerWon ? "win" : "loss");
+  game.patch({
+    status: "over",
+    result: {
+      outcome: `${side === "white" ? "White" : "Black"} ran out of time`,
+      detail: `${side === "white" ? "Black" : "White"} wins on time · move ${Math.ceil(
+        game.plies.length / 2,
+      )}`,
+      playerWon,
+    },
+  });
+  void flushDeferred();
 }
 
 /** Plays a move the player has been warned about. */
@@ -534,6 +627,10 @@ export function explainHint() {
  * is deliberate: a board loaded from FEN has no history, which breaks both
  * threefold-repetition detection and take-backs.
  */
+/* A reload restores banked time but not the instant the running side started —
+   `since` is deliberately not persisted, so the clock is paused on arrival. Handing
+   it back to the side on the move restarts it from now, which means closing the tab
+   costs nothing. */
 export async function resumeGame() {
   const game = useGame.getState();
   if (game.plies.length === 0 || chess.history().length > 0) return;
@@ -552,6 +649,10 @@ export async function resumeGame() {
   syncPosition();
   announce(game.plies.at(-1) ?? null);
 
+  if (useClock.getState().enabled && game.status !== "over") {
+    useClock.getState().handOver(chess.turn() === "w" ? "white" : "black");
+  }
+
   useEngine.getState().patch({ loading: true, error: null });
   try {
     const settings = useSettings.getState();
@@ -565,7 +666,7 @@ export async function resumeGame() {
   }
 
   // The hint and the eval bar both read the current position's search.
-  void analyse(chess.history().length, chess.fen());
+  void analyse(chess.history().length, chess.fen(), true);
   const playerTurn = chess.turn() === game.playerColor;
   if (!playerTurn && game.status !== "over") void engineReply();
 }

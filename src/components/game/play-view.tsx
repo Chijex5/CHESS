@@ -18,13 +18,16 @@ import type { BoardArrow } from "@/components/board/board-arrows";
 import { EvalBar } from "@/components/eval/eval-bar";
 import { ConceptDrawer } from "@/components/coach/concept-drawer";
 import { PlayerStrip } from "./player-strip";
+import { Clock } from "./clock";
 import { MobileCoachDock } from "./mobile-coach-dock";
 import { SideRail, type RailTab } from "./side-rail";
 import { BoardMenu } from "./board-menu";
 import { BoardMessageLine, type BoardMessage } from "./board-message";
 import { GameOverDialog } from "./game-over-dialog";
-import { SettingsPanel, tierFor } from "@/components/setup/settings-panel";
+import { SettingsPanel } from "@/components/setup/settings-panel";
+import { opponentFor } from "@/lib/engine/opponents";
 import { useGame, fenAtPly, lastMoveAtPly } from "@/lib/store/game-store";
+import { describeEval } from "@/lib/chess/eval";
 import { useEngine, evalAtPly } from "@/lib/store/engine-store";
 import { sortedAnnotations, useCoach } from "@/lib/store/coach-store";
 import { useHint } from "@/lib/store/hint-store";
@@ -36,6 +39,7 @@ import {
   explainHint,
   needsPromotion,
   playMove,
+  flagFall,
   resign,
   resumeGame,
   retryMove,
@@ -214,6 +218,8 @@ export function PlayView() {
     ? squareToIndex(game.pendingPromotion.to, game.flipped) >= 32
     : false;
 
+  const playerSide = game.playerColor === "w" ? "white" : "black";
+
   /* One message, chosen by urgency. A move you have been warned about is blocking
      your own turn, so it outranks a result you have already been shown in a modal,
      which outranks an engine complaint, which outranks the opponent's clock. */
@@ -230,13 +236,14 @@ export function PlayView() {
         ? { kind: "engine-error", text: engine.error }
         : game.status === "thinking"
           ? { kind: "thinking" }
-          : null;
+          : evalHidden
+            ? null
+            : { kind: "standing", text: describeEval(displayEval, playerSide) };
 
   const writing = annotations.some(
     (a) => a.stage === "streaming" || a.stage === "retrieving" || a.stage === "analyzing",
   );
 
-  const playerSide = game.playerColor === "w" ? "white" : "black";
   const stats = useMemo(
     () =>
       gameStats({
@@ -284,7 +291,7 @@ export function PlayView() {
           <div className="mx-auto flex min-h-0 w-full flex-1 flex-col gap-2 lg:max-w-[calc(100cqh-6.5rem)]">
           <PlayerStrip
             name="Stockfish 18"
-            sublabel={`${settings.elo} · ${tierFor(settings.elo)}`}
+            sublabel={`${opponentFor(settings.elo).name} · ${settings.elo}`}
             color={game.playerColor === "w" ? "b" : "w"}
             captured={game.playerColor === "w" ? tray.blackTray : tray.whiteTray}
             advantage={Math.max(
@@ -293,6 +300,7 @@ export function PlayView() {
             )}
             thinking={game.status === "thinking"}
             active={!playerTurn && game.status !== "over"}
+            trailing={<Clock side={playerSide === "white" ? "black" : "white"} onFlag={flagFall} />}
             className="shrink-0"
           />
 
@@ -313,6 +321,7 @@ export function PlayView() {
                 settled={engine.settled}
                 hidden={evalHidden}
                 flipped={game.flipped}
+                playerSide={playerSide}
                 className="shrink-0"
               />
               {/* Below `lg` the page scrolls, so the cap there is still a guess at
@@ -327,7 +336,14 @@ export function PlayView() {
                   hintSquare={hintFrom}
                   checkSquare={live ? game.checkSquare : null}
                   selected={game.selected}
-                  legalTargets={game.selected ? (game.legal[game.selected] ?? []) : []}
+                  legalMoves={game.legal}
+                  onMove={(from, to) => {
+                    if (needsPromotion(from, to)) {
+                      game.patch({ pendingPromotion: { from, to } });
+                      return;
+                    }
+                    void playMove(from, to);
+                  }}
                   announcement={game.lastAnnouncement}
                   onSquareClick={onSquareClick}
                   interactive={interactive}
@@ -369,6 +385,7 @@ export function PlayView() {
               game.playerColor === "w" ? tray.advantage : -tray.advantage,
             )}
             active={playerTurn}
+            trailing={<Clock side={playerSide} onFlag={flagFall} />}
             className="shrink-0"
           />
 
@@ -383,7 +400,10 @@ export function PlayView() {
               <HintControls
                 stage={game.hintStage}
                 available={Boolean(best)}
-                thinking={interactive && !best && !engine.settled}
+                /* Keyed to the hint itself, not to `engine.settled`: a commentary
+                   search on a move already played used to spin this button while a
+                   perfectly good hint was sitting there ready. */
+                thinking={interactive && !best}
                 explaining={hint.stage === "streaming"}
                 onReveal={revealHint}
                 onExplain={explainHint}
