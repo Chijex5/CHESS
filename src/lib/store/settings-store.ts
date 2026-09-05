@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { configureAudio } from "@/lib/audio/sfx";
+import type { TimeControlId } from "@/lib/game/time-controls";
 
 export type Sensitivity = "blunders" | "mistakes" | "inaccuracies" | "every";
 export type Verbosity = "terse" | "standard" | "deep";
@@ -19,6 +20,8 @@ export type Settings = {
   elo: number;
   thinkMs: number;
   side: PlaySide;
+  /** Applies to the next game — changing a clock mid-game would be a cheat. */
+  timeControl: TimeControlId;
   sensitivity: Sensitivity;
   verbosity: Verbosity;
   timing: Timing;
@@ -35,6 +38,7 @@ export const DEFAULT_SETTINGS: Settings = {
   elo: 1600,
   thinkMs: 700,
   side: "white",
+  timeControl: "unlimited",
   sensitivity: "inaccuracies",
   verbosity: "standard",
   timing: "after-reply",

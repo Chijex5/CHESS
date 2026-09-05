@@ -21,6 +21,11 @@ export type SearchRequest = {
   /** Wall-clock budget. Use this for the opponent so it feels responsive. */
   movetimeMs?: number;
   onInfo?: (info: SearchInfo) => void;
+  /** Jump the queue. There is one analyst and it runs one search at a time, so a
+   *  search for the position the player is sitting in has to be able to overtake
+   *  commentary about a move already played — otherwise the hint waits on a note
+   *  nobody asked for yet. Does not interrupt a search already running. */
+  priority?: boolean;
   signal?: AbortSignal;
 };
 
@@ -147,7 +152,8 @@ export class UciEngine {
         );
       };
 
-      this.queue.push(run);
+      if (request.priority) this.queue.unshift(run);
+      else this.queue.push(run);
       if (!this.pending && this.queue.length === 1) this.next();
     });
   }

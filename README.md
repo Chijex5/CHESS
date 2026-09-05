@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Chess Coach
 
-## Getting Started
+Play a real engine and find out why you lost.
 
-First, run the development server:
+Stockfish 18 supplies every move and every number, in your browser. An LLM
+supplies the reason — tied to the evaluation swing the engine actually measured,
+and grounded in a corpus of principles you can read for yourself. Then it deals
+your own mistakes back to you until you can solve them.
+
+There is one API key, for the coach. Everything else — the engine, move legality,
+evaluations, the severity classification, concept retrieval — runs locally with no
+key and no external service.
+
+## Running it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env      # add a Gemini key; see the file for where to get one
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The engine's WebAssembly is copied out of `node_modules` into `public/engine/` by
+`scripts/copy-engine.mjs`, which `dev` and `build` both run. It is gitignored — 7 MB
+of build output does not belong in a repository.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| script | |
+|---|---|
+| `pnpm dev` | Next.js with Turbopack |
+| `pnpm build` | production build |
+| `pnpm verify` | concept examples → `tsc` → `eslint` → `build` |
+| `pnpm concepts` | verify the worked example on every concept page |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## How a move becomes an explanation
 
-## Learn More
+1. You move. `chess.js` validates it; the board and the sound respond immediately.
+2. Two searches at depth 14 — the position before your move and after it — run on a
+   dedicated analyst worker. The opponent's reply runs on a *second* worker, so
+   commentary never delays the game.
+3. The win-percentage drop between them decides whether the move is worth
+   discussing at all. Below your sensitivity threshold, nothing happens.
+4. Position features (what was captured, what is now loose, which files opened)
+   retrieve principles from a 14-entry corpus. No embeddings, no vector store —
+   tag matching over a hand-written index, which is both auditable and free.
+5. Those principles plus the engine's numbers go to Gemini, and the answer streams
+   back as NDJSON. The model marks its own jargon in `[[double brackets]]`; matched
+   terms become links into the concept pages.
 
-To learn more about Next.js, take a look at the following resources:
+Every number the coach quotes is one the engine produced. It is not asked to
+evaluate anything.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Layout
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+src/lib/engine/     Stockfish workers behind a promise API; two instances —
+                    a weakened opponent and a full-strength analyst
+src/lib/chess/      FEN, evaluation curves, move-quality classification
+src/lib/game/       the live game (mutable chess.js at module scope), plus
+                    drills, stats, time controls
+src/lib/coach/      prompts, retrieval, the concept corpus
+src/lib/store/      zustand: game, engine, coach, hint, clock, settings
+src/components/     board, coach, eval, game, review, practise, setup
+src/app/            /, /play, /review, /practise, /concepts, /settings,
+                    and /api/coach
+```
 
-## Deploy on Vercel
+The live position is a mutable `chess.js` instance at module scope rather than
+store state: a reactive copy would re-render the board on every piece of internal
+bookkeeping. The stores hold the *record* — plies, annotations, analyses — and the
+board is drawn from a FEN.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Decisions worth knowing about
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **The engine is the authority on facts, the model on prose.** Evaluations,
+  best moves and quality bands never come from the LLM.
+- **Hints are counted.** A hinted move is marked in the notation and barred from
+  the praise bands, because an accuracy figure that credits you for reading an
+  arrow is worthless.
+- **`Evaluation` has a `mated` variant.** UCI reports a checkmated position as
+  `mate 0`, and normalising that by negation loses the sign — which scored every
+  delivered checkmate as a 100% blunder until it was named instead.
+- **One `gameStats()`** behind both the game-over dialog and the review page.
+  Two implementations of one accuracy curve drift, and a number that changes when
+  you click through looks invented.
+- **The board owns the vertical axis.** One tabbed rail rather than two columns,
+  one fixed-height message line rather than a stack of alerts, and a definite
+  height from `lg` up so a long game scrolls its notation instead of the page.
+- **The clock is off by default.** This app expects you to stop and read a
+  paragraph about the move you just played. A clock running through that is a
+  penalty for using it.
+- **Concept examples are verified mechanically.** `pnpm concepts` checks that every
+  FEN loads, that the side to move is not already in check, and that the named move
+  is legal. A wrong diagram on a teaching page is worse than no diagram.
+- **Sound is synthesised, not sampled.** A bandpassed noise transient over a low
+  body is a piece landing on wood. No assets, no licensing, and the same cue can
+  shift pitch to carry meaning.
+
+## Not there yet
+
+Single player only — multiplayer is planned and the landing page says so rather
+than hiding it. Only the current game is kept, so finishing one replaces the last;
+there is no game history and no accounts. Nothing is stored anywhere but your
+browser's `localStorage`.

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Source_Serif_4 } from "next/font/google";
+import { ClerkProvider } from "@clerk/nextjs";
 import { ThemeProvider } from "@/components/shell/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
@@ -41,10 +42,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} ${sourceSerif.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col" data-board="walnut">
-        <ThemeProvider>
-          <TooltipProvider delayDuration={220}>{children}</TooltipProvider>
-          <Toaster position="top-center" />
-        </ThemeProvider>
+        {/* Inside <body>, not wrapping <html>. Both work today, but Next's cache
+            components require it here, and this project is one `next.config`
+            flag away from using them. */}
+        <ClerkProvider>
+          <ThemeProvider>
+            <TooltipProvider delayDuration={220}>{children}</TooltipProvider>
+            <Toaster position="top-center" />
+          </ThemeProvider>
+        </ClerkProvider>
       </body>
     </html>
   );

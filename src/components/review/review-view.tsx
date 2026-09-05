@@ -22,9 +22,9 @@ import { sortedAnnotations, useCoach } from "@/lib/store/coach-store";
 import { useSettings } from "@/lib/store/settings-store";
 import { toMoveRows } from "@/lib/game/rows";
 import { gameStats } from "@/lib/game/stats";
+import { opponentFor } from "@/lib/engine/opponents";
 import { plainProse } from "@/components/coach/coach-prose";
 import { splitUci, toPgn } from "@/lib/game/notation";
-import { tierFor } from "@/components/setup/settings-panel";
 import { QualityTally } from "@/components/coach/quality-tally";
 import type { Concept } from "@/lib/chess/types";
 
@@ -175,7 +175,7 @@ export function ReviewView() {
             </h1>
             <p className="text-xs text-muted-foreground">
               {game.result?.detail ?? `${Math.ceil(total / 2)} moves so far`} · vs Stockfish 18 at{" "}
-              {settings.elo} ({tierFor(settings.elo)})
+              {opponentFor(settings.elo).name} ({settings.elo})
             </p>
           </div>
           <div className="ms-auto flex flex-wrap items-center gap-2">

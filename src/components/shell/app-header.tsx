@@ -6,6 +6,7 @@ import { BookOpen, Crown, Dumbbell, ListOrdered, Swords } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
 import { SoundToggle } from "./sound-toggle";
+import { AccountButton } from "./account-button";
 
 const NAV = [
   { href: "/play", label: "Play", Icon: Swords },
@@ -68,6 +69,7 @@ export function AppHeader({
         {right}
         <SoundToggle />
         <ThemeToggle />
+        <AccountButton />
       </div>
     </header>
   );

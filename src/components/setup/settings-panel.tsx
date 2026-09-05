@@ -22,6 +22,12 @@ import {
   type Verbosity,
 } from "@/lib/store/settings-store";
 import { ELO_MAX, ELO_MIN } from "@/lib/engine/manager";
+import { OPPONENTS, isNamedElo, opponentFor } from "@/lib/engine/opponents";
+import {
+  TIME_CONTROLS,
+  timeControlFor,
+  type TimeControlId,
+} from "@/lib/game/time-controls";
 
 export { DEFAULT_SETTINGS };
 export type { Settings, BoardTheme };
@@ -29,13 +35,6 @@ export type { Settings, BoardTheme };
 /* UCI_Elo accepts 1320–3190 (Stockfish's own Search::Skill bounds), so the tiers
    below are real engine settings rather than invented levels. */
 
-const TIERS: { at: number; name: string }[] = [
-  { at: 1320, name: "Beginner" },
-  { at: 1600, name: "Casual" },
-  { at: 2000, name: "Club" },
-  { at: 2400, name: "Strong" },
-  { at: 3190, name: "Full strength" },
-];
 
 /* One question the player can actually answer about themselves, in place of two
    they cannot ("how verbose?" and "what vocabulary?"). Picking a level sets the
@@ -46,9 +45,6 @@ const LEVELS: { value: Level; label: string; hint: string }[] = [
   { value: "club", label: "Club player", hint: "Normal chess vocabulary, briefly" },
 ];
 
-export function tierFor(elo: number) {
-  return [...TIERS].reverse().find((t) => elo >= t.at)?.name ?? "Beginner";
-}
 
 const SIDES: { value: PlaySide; label: string }[] = [
   { value: "white", label: "White" },
@@ -68,6 +64,27 @@ const SENSITIVITIES: { value: Sensitivity; label: string; covers: string }[] = [
     covers: "Inaccuracies, mistakes and blunders.",
   },
   { value: "every", label: "Every move", covers: "Every move you play, good or bad." },
+];
+
+/* Each of these now describes something the app actually does. Until recently
+   "As you move" and "After the reply" were the same code path, so the note under
+   the control was describing a distinction that did not exist. */
+const TIMINGS: { value: Timing; label: string; note: string }[] = [
+  {
+    value: "immediate",
+    label: "As you move",
+    note: "The note starts writing the moment you move, while your opponent is still thinking.",
+  },
+  {
+    value: "after-reply",
+    label: "After the reply",
+    note: "Held until your opponent has answered, so a note never lands on a position that is about to change.",
+  },
+  {
+    value: "post-game",
+    label: "End of game",
+    note: "Nothing during play — the whole set arrives at the end. Being told mid-game that a better move existed is itself a hint.",
+  },
 ];
 
 /** Sensitivity is also the cost dial, so the threshold is shown next to it. */
@@ -177,28 +194,67 @@ export function SettingsPanel({
         <h3 className="eyebrow">
           Opponent
         </h3>
-        <Row label="Engine strength" hint={`${value.elo} · ${tierFor(value.elo)}`}>
-          <Slider
-            min={ELO_MIN}
-            max={ELO_MAX}
-            step={10}
-            value={[value.elo]}
-            onValueChange={([v]) => set("elo", v)}
-          />
-          <div className="flex justify-between pt-0.5 text-2xs text-muted-foreground">
-            {TIERS.map((t) => (
-              <span key={t.at}>{t.name}</span>
+        {/* Off by default. A clock running while you read a paragraph about the
+            move you just played is a penalty for using the app. */}
+        <Row
+          label="Clock"
+          hint={timeControlFor(value.timeControl).incrementMs > 0 ? "with increment" : undefined}
+        >
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            className={group}
+            value={value.timeControl}
+            onValueChange={(v) => v && set("timeControl", v as TimeControlId)}
+          >
+            {TIME_CONTROLS.map((t) => (
+              <ToggleGroupItem key={t.id} value={t.id}>
+                {t.label}
+              </ToggleGroupItem>
             ))}
-          </div>
+          </ToggleGroup>
+          <p className="pt-1 text-2xs leading-snug text-muted-foreground">
+            {timeControlFor(value.timeControl).note} Applies to your next game.
+          </p>
         </Row>
-        <Row label="Thinking time" hint={`${(value.thinkMs / 1000).toFixed(1)}s / move`}>
-          <Slider
-            min={200}
-            max={3000}
-            step={100}
-            value={[value.thinkMs]}
-            onValueChange={([v]) => set("thinkMs", v)}
-          />
+
+        {/* Named opponents rather than a rating. Picking one sets its thinking
+            time too — a stronger opponent that answers instantly reads as a bug. */}
+        <Row label="Opponent" hint={`${value.elo} Elo`}>
+          <div className="grid gap-1.5">
+            {OPPONENTS.map((o) => {
+              const picked = opponentFor(value.elo).id === o.id;
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  aria-pressed={picked}
+                  onClick={() => onChange({ ...value, elo: o.elo, thinkMs: o.thinkMs })}
+                  className={cn(
+                    "rounded-lg border px-2.5 py-2 text-left transition-colors",
+                    picked
+                      ? "border-primary/45 bg-primary/[0.06]"
+                      : "hover:border-primary/25 hover:bg-accent/40",
+                  )}
+                >
+                  <span className="flex items-baseline gap-2">
+                    <span className="text-sm font-medium">{o.name}</span>
+                    <span className="tnum font-mono text-2xs text-muted-foreground">
+                      {o.elo}
+                    </span>
+                    {picked && !isNamedElo(value.elo) && (
+                      <span className="ms-auto text-2xs text-muted-foreground">
+                        set to {value.elo}
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-0.5 block font-serif text-xs leading-relaxed text-muted-foreground">
+                    {o.blurb}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </Row>
       </section>
 
@@ -234,7 +290,7 @@ export function SettingsPanel({
               length is set by your experience
             </span>
           </summary>
-          <div className="mt-3">
+          <div className="mt-3 space-y-4">
             <Row label="Length of explanation">
               <ToggleGroup
                 type="single"
@@ -248,6 +304,26 @@ export function SettingsPanel({
                 <ToggleGroupItem value="deep">Deep</ToggleGroupItem>
               </ToggleGroup>
             </Row>
+            {/* Still here for anyone who wants a rating between two names, or an
+                opponent that thinks longer than its strength suggests. */}
+            <Row label="Exact rating" hint={`${value.elo} Elo`}>
+              <Slider
+                min={ELO_MIN}
+                max={ELO_MAX}
+                step={10}
+                value={[value.elo]}
+                onValueChange={([v]) => set("elo", v)}
+              />
+            </Row>
+            <Row label="Thinking time" hint={`${(value.thinkMs / 1000).toFixed(1)}s / move`}>
+              <Slider
+                min={200}
+                max={3000}
+                step={100}
+                value={[value.thinkMs]}
+                onValueChange={([v]) => set("thinkMs", v)}
+              />
+            </Row>
           </div>
         </details>
         <Row label="When to speak">
@@ -258,14 +334,15 @@ export function SettingsPanel({
             value={value.timing}
             onValueChange={(v) => v && set("timing", v as Timing)}
           >
-            <ToggleGroupItem value="immediate">Immediately</ToggleGroupItem>
-            <ToggleGroupItem value="after-reply">After reply</ToggleGroupItem>
-            <ToggleGroupItem value="post-game">Post-game</ToggleGroupItem>
+            {TIMINGS.map((t) => (
+              <ToggleGroupItem key={t.value} value={t.value}>
+                {t.label}
+              </ToggleGroupItem>
+            ))}
           </ToggleGroup>
           <p className="flex items-start gap-1.5 pt-1 text-2xs leading-snug text-muted-foreground">
             <Info className="mt-px size-3 shrink-0" aria-hidden />
-            In-game commentary tells you a better move existed, which is a hint.
-            Post-game keeps the game honest.
+            {TIMINGS.find((t) => t.value === value.timing)?.note}
           </p>
         </Row>
         <div className="flex items-center justify-between gap-3 rounded-lg border p-2.5">

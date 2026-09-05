@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ChevronRight, Settings2, Swords, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChessBoard } from "@/components/board/chess-board";
-import { tierFor } from "./settings-panel";
+import { opponentFor } from "@/lib/engine/opponents";
 import { useSettings } from "@/lib/store/settings-store";
 import { START_FEN } from "@/lib/chess/fen";
 
@@ -71,7 +71,7 @@ export function HomeHero() {
                   className="text-2xs font-normal leading-none opacity-80"
                   suppressHydrationWarning
                 >
-                  Stockfish 18 · {tierFor(settings.elo)} {settings.elo} ·{" "}
+                  {opponentFor(settings.elo).name} {settings.elo} ·{" "}
                   {SIDE_LABEL[settings.side]}
                 </span>
               </span>

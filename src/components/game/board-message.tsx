@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, TriangleAlert, Trophy } from "lucide-react";
+import { Loader2, Scale, TriangleAlert, Trophy } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,8 @@ export type BoardMessage =
     }
   | { kind: "result"; text: string; won: boolean | null }
   | { kind: "thinking" }
+  /** Who is winning, in words. The quietest thing this row ever holds. */
+  | { kind: "standing"; text: string }
   | null;
 
 /* ── One line, one message ────────────────────────────────────────────────────
@@ -38,6 +40,13 @@ export function BoardMessageLine({
       className={cn("flex h-9 shrink-0 items-center gap-2 px-0.5", className)}
       aria-live="polite"
     >
+      {message?.kind === "standing" && (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Scale className="size-3.5 shrink-0 opacity-70" aria-hidden />
+          {message.text}
+        </p>
+      )}
+
       {message?.kind === "thinking" && (
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="size-3.5 animate-spin" aria-hidden />

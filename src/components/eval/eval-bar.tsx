@@ -2,8 +2,8 @@
 
 import { EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { evalToWinPct, formatEval } from "@/lib/chess/eval";
-import type { Evaluation } from "@/lib/chess/types";
+import { describeEval, evalToWinPct, formatEval } from "@/lib/chess/eval";
+import type { Evaluation, Side } from "@/lib/chess/types";
 
 /* Geometry runs on win%, not raw centipawns: a linear cp bar pegs at ±10 pawns
    and then stops moving, which is exactly where a learner still needs to see
@@ -16,6 +16,8 @@ export function EvalBar({
   showNumber = true,
   hidden = false,
   flipped = false,
+  /** Whose side "better for you" refers to. Omit on a board with no player. */
+  playerSide,
   className,
 }: {
   evaluation: Evaluation;
@@ -24,6 +26,7 @@ export function EvalBar({
   showNumber?: boolean;
   hidden?: boolean;
   flipped?: boolean;
+  playerSide?: Side;
   className?: string;
 }) {
   const winPct = evalToWinPct(evaluation);
@@ -71,7 +74,12 @@ export function EvalBar({
       aria-valuenow={Math.round(winPct)}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-label={`Evaluation ${label}, white winning chances ${Math.round(winPct)} percent`}
+      title={playerSide ? describeEval(evaluation, playerSide) : undefined}
+      aria-label={
+        playerSide
+          ? `${describeEval(evaluation, playerSide)}. Evaluation ${label}.`
+          : `Evaluation ${label}, white winning chances ${Math.round(winPct)} percent`
+      }
     >
       {showNumber && (
         <span

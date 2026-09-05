@@ -1,4 +1,4 @@
-import type { Evaluation, MoveQuality } from "./types";
+import type { Evaluation, MoveQuality, Side } from "./types";
 
 /** Lichess' centipawn → winning-chances curve.
  *  Win% = 50 + 50 * (2 / (1 + exp(-0.00368208 * cp)) - 1)
@@ -32,6 +32,43 @@ export function formatEval(e: Evaluation): string {
   const pawns = e.cp / 100;
   const sign = pawns > 0 ? "+" : pawns < 0 ? "−" : "";
   return `${sign}${Math.abs(pawns).toFixed(Math.abs(pawns) < 10 ? 2 : 1)}`;
+}
+
+/* ── The eval in words ────────────────────────────────────────────────────────
+   `+0.26` is a number about a position; "you are slightly better" is a fact about
+   your game. A player who does not already think in centipawns gets nothing from
+   the former, and the whole premise of this app is that they are the audience.
+
+   Bands are on win%, not pawns, for the same reason the bar's geometry is: the
+   difference between +0.2 and +0.6 matters and the difference between +7 and +9
+   does not. Phrased from the reader's side, because "White is better" requires you
+   to remember which one you are.
+   ─────────────────────────────────────────────────────────────────────────── */
+const STANDINGS: { above: number; you: string; them: string }[] = [
+  { above: 95, you: "Winning", them: "Lost" },
+  { above: 80, you: "Much better for you", them: "Much better for them" },
+  { above: 62, you: "Better for you", them: "Better for them" },
+  { above: 55, you: "Slightly better for you", them: "Slightly better for them" },
+];
+
+export function describeEval(e: Evaluation, playerSide: Side): string {
+  if (e.kind === "mated") {
+    return e.winner === playerSide ? "Checkmate — you won" : "Checkmate — you lost";
+  }
+  if (e.kind === "mate") {
+    const yours = (e.movesToMate > 0) === (playerSide === "white");
+    const moves = Math.abs(e.movesToMate);
+    return yours
+      ? `You have mate in ${moves}`
+      : `They have mate in ${moves}`;
+  }
+
+  const winPct = evalToWinPct(e);
+  const mine = playerSide === "white" ? winPct : 100 - winPct;
+  const band = STANDINGS.find((s) => mine >= s.above);
+  if (band) return band.you;
+  const mirrored = STANDINGS.find((s) => 100 - mine >= s.above);
+  return mirrored ? mirrored.them : "Level";
 }
 
 /** Win% drop → quality band. Thresholds are on winning chances, not raw
