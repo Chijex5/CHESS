@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { gameRow, snapshot } from "@/lib/multiplayer/games";
 import { normaliseGameId } from "@/lib/multiplayer/ids";
 import { subscribe } from "@/lib/realtime/bus";
-import type { ServerEvent } from "@/lib/multiplayer/protocol";
+import type { GameSnapshot, ServerEvent } from "@/lib/multiplayer/protocol";
 
 /* One long-lived function per connected player. 300s is the Hobby ceiling and the
    stream is designed to be cut off: the browser reconnects on its own, sends
@@ -19,6 +19,28 @@ const HEARTBEAT_MS = 10_000;
    once in a while as a plain POST, and the stream only ever comes down — so the
    upgrade handshake would buy bidirectionality nothing uses, while browsers give us
    reconnection and `Last-Event-ID` resume for free. */
+/**
+ * Everything a client's rendering depends on, in one comparable string.
+ *
+ * Anything a board, a clock or a status line reads has to appear here, or a change to
+ * it will not be sent. That is the failure the sequence-number version had, so the
+ * rule is: if the UI reads it, it is in this string.
+ */
+function fingerprintOf(state: GameSnapshot): string {
+  return [
+    state.status,
+    state.seq,
+    state.white?.username ?? "",
+    state.black?.username ?? "",
+    state.winner ?? "",
+    state.ending ?? "",
+    state.offer ? `${state.offer.kind}:${state.offer.by}` : "",
+    // The clock's fixed point. It moves when a game starts and when a move lands, and
+    // a client projecting from a stale one shows the wrong time.
+    state.turnStartedAt,
+  ].join("|");
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -35,9 +57,13 @@ export async function GET(
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let open = true;
-      /* The client's own cursor, so a resumed stream is told only what it missed.
-         Sent by the browser automatically after a drop. */
-      let sent = Number(request.headers.get("last-event-id") ?? 0);
+      /* What the client has already been told, as a fingerprint of everything a board
+         is drawn from. Not a sequence number: the first version of this gated on
+         `seq !== sent || status !== "active"`, and a game going pending → active with
+         no moves played changes neither — so the host was never told their opponent
+         had arrived, and a reconnect was never told anything at all and waited
+         forever. Meanwhile the server was already running their clock. */
+      let fingerprint = "";
 
       const send = (event: ServerEvent, eventId?: number) => {
         if (!open) return;
@@ -49,9 +75,9 @@ export async function GET(
         }
       };
 
-      /* Always a snapshot first, on a fresh connect and on every resume. It costs
-         one query and removes a whole class of bug: there is no path where a client
-         is drawing a board it assembled from events alone. */
+      /* Always a snapshot, never a delta. It costs one query and removes a whole
+         class of bug: there is no path where a client draws a board it assembled from
+         events alone, so a fresh connect and a resume are the same code. */
       const push = async () => {
         const state = await snapshot(id, userId ?? null);
         if (!state) {
@@ -63,10 +89,13 @@ export async function GET(
           }
           return;
         }
-        if (state.seq !== sent || state.status !== "active") {
-          sent = state.seq;
+
+        const next = fingerprintOf(state);
+        if (next !== fingerprint) {
+          fingerprint = next;
           send({ type: "snapshot", snapshot: state }, state.seq);
         }
+
         if (state.status === "finished" || state.status === "abandoned") {
           open = false;
           try {

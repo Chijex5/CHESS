@@ -28,8 +28,15 @@ type Piece = {
 };
 
 const COUNT = 90;
-const GRAVITY = 0.0011;
 const DRAG = 0.9975;
+
+/** How long a piece should be in the air, ms. The whole burst is over in about this
+ *  plus the fade, which is roughly how long a result dialog holds attention. */
+const FLIGHT_MS = 1500;
+
+/** Fraction of the canvas height the burst should peak at. Below 1 by definition:
+ *  confetti that leaves the top of its own canvas is not confetti, it is a glitch. */
+const APEX = 0.62;
 
 export function Confetti({ fire }: { fire: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -67,9 +74,20 @@ export function Confetti({ fire }: { fire: boolean }) {
     };
     resize();
 
+    /* Derived from the canvas rather than fixed.
+       The first version used constants tuned by eye against one dialog, and in a
+       smaller one every piece flew off the top within 300ms — the burst was real and
+       simply not on screen. Solving the projectile the other way round fixes it at any
+       size: for a flight of `FLIGHT_MS` reaching `APEX` of the height,
+         apex = g·T²/8   and   v₀ = g·T/2
+       which gives the two constants from the one measurement that matters. */
+    const gravity = (8 * APEX * height) / (FLIGHT_MS * FLIGHT_MS);
+    const launch = (gravity * FLIGHT_MS) / 2;
+
     const pieces: Piece[] = Array.from({ length: COUNT }, (_, i) => {
       const fromLeft = i % 2 === 0;
-      const speed = 0.55 + Math.random() * 0.75;
+      // ±25% so they do not all land at once, which reads as a single object.
+      const speed = launch * (0.8 + Math.random() * 0.45);
       const angle = (fromLeft ? -1.15 : -1.99) + (Math.random() - 0.5) * 0.6;
       return {
         x: fromLeft ? width * 0.06 : width * 0.94,
@@ -78,19 +96,27 @@ export function Confetti({ fire }: { fire: boolean }) {
         vy: Math.sin(angle) * speed,
         spin: Math.random() * Math.PI,
         spinRate: (Math.random() - 0.5) * 0.02,
-        w: 5 + Math.random() * 5,
-        h: 2 + Math.random() * 3,
+        w: Math.max(4, height * 0.018) * (0.7 + Math.random()),
+        h: Math.max(2, height * 0.008) * (0.7 + Math.random()),
         colour: palette[i % palette.length],
-        life: 2600 + Math.random() * 1400,
+        // Long enough to fall back through the frame after the apex, plus the fade.
+        life: FLIGHT_MS * (1.1 + Math.random() * 0.5),
       };
     });
 
     let raf = 0;
-    let last = performance.now();
+    /* Seeded from the first animation frame, not from `performance.now()`.
+       `requestAnimationFrame` hands back the timestamp of the *start* of the frame,
+       which can be well behind the moment the callback was scheduled — this ran with a
+       first delta of −322ms. A negative dt reverses gravity and drives every piece
+       backwards off the canvas, so the burst was real, running, and entirely
+       off-screen. The clamp is a second line of defence for the same reason. */
+    let last = 0;
     let elapsed = 0;
 
     const frame = (now: number) => {
-      const dt = Math.min(32, now - last);
+      if (last === 0) last = now;
+      const dt = Math.max(0, Math.min(32, now - last));
       last = now;
       elapsed += dt;
       ctx.clearRect(0, 0, width, height);
@@ -99,7 +125,7 @@ export function Confetti({ fire }: { fire: boolean }) {
       for (const p of pieces) {
         if (elapsed > p.life) continue;
         alive += 1;
-        p.vy += GRAVITY * dt;
+        p.vy += gravity * dt;
         p.vx *= DRAG;
         p.x += p.vx * dt;
         p.y += p.vy * dt;

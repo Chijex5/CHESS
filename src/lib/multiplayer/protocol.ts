@@ -60,31 +60,20 @@ export type GameSnapshot = {
   rated: boolean;
 };
 
+/* Two events, and one of them is a heartbeat.
+ *
+ * There is no `move`, `joined`, `offer` or `over` event, deliberately. A snapshot
+ * already carries all of it, and every one of those would be a second way to learn
+ * the same fact — which is a second thing to keep consistent and a second thing to
+ * forget to send. An earlier draft of this type declared all four and sent none, so
+ * anyone writing a client from the types alone would have handled events that never
+ * arrive and missed the one that does. */
 export type ServerEvent =
-  /** Sent once on connect and after any resume, so a fresh stream needs no
-   *  separate fetch. */
+  /** The whole game. Sent on connect, on resume, and whenever anything a client
+   *  renders has changed. */
   | { type: "snapshot"; snapshot: GameSnapshot }
-  | {
-      type: "move";
-      seq: number;
-      san: string;
-      uci: string;
-      msLeftWhite: number;
-      msLeftBlack: number;
-      playedAt: number;
-    }
-  | { type: "joined"; seat: Seat; player: PublicPlayer; startedAt: number }
-  | { type: "offer"; kind: "draw" | "rematch"; by: Seat }
-  | { type: "offer-declined"; kind: "draw" | "rematch" }
-  | {
-      type: "over";
-      winner: GameWinner;
-      ending: GameEnding;
-      /** Present only for rated games. */
-      ratings?: Record<Seat, { before: number; after: number }>;
-    }
-  /** Keeps proxies from closing an idle stream, and lets the client notice a dead
-   *  connection without waiting for a move that may be minutes away. */
+  /** Keeps an intermediary from closing an idle stream, and lets the client notice a
+   *  dead connection without waiting for a move that may be minutes away. */
   | { type: "ping"; now: number };
 
 export type MoveRequest = {

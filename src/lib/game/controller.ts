@@ -3,6 +3,7 @@
 import { Chess } from "chess.js";
 import { ANALYSIS_DEPTH, getAnalyst, getOpponent, setOpponentElo } from "@/lib/engine/manager";
 import { COMMIT_DEPTH, useEngine } from "@/lib/store/engine-store";
+import { START_FEN } from "@/lib/chess/fen";
 import { useGame } from "@/lib/store/game-store";
 import { useCoach } from "@/lib/store/coach-store";
 import {
@@ -681,4 +682,85 @@ export function history() {
 
 export function evaluationAt(ply: number): Evaluation | null {
   return useEngine.getState().analysis[ply]?.evaluation ?? null;
+}
+
+/**
+ * Loads a finished game — an online one — into the local stores and coaches it.
+ *
+ * This is where "no engine help during, everything after" is paid off. An online
+ * game runs no analysis while it is played, so at the end there is a move list and
+ * nothing else; this replays it, searches every position, and puts each of the
+ * player's mistakes through the same judging and explanation path an engine game uses
+ * as it goes. Afterwards `/review` and `/practise` work on it unchanged, because both
+ * only ever read the stores.
+ *
+ * Sequential rather than parallel: there is one analyst worker and it queues anyway,
+ * so firing forty searches at once would make the last one arrive no sooner while
+ * making the first arrive later — and the progress callback would jump rather than
+ * count.
+ */
+export async function analyseFinishedGame(input: {
+  sans: string[];
+  playerColor: PieceColor;
+  result: GameResult;
+  /** 0–1, for a progress bar. Called after each position is searched. */
+  onProgress?: (done: number, total: number) => void;
+  signal?: AbortSignal;
+}): Promise<void> {
+  const { sans, playerColor, result, onProgress, signal } = input;
+
+  for (const controller of coachAborts.values()) controller.abort();
+  coachAborts = new Map();
+  useCoach.getState().clear();
+  useEngine.getState().reset();
+  useGame.getState().reset(playerColor);
+  useClock.getState().reset(0, 0);
+
+  /* Rebuilt rather than trusted: the records carry the FEN either side of every move,
+     and deriving them here means an online game and an engine game produce byte-identical
+     store contents. Everything downstream can then be ignorant of where the game
+     came from. */
+  chess = new Chess();
+  const records: PlyRecord[] = [];
+  for (const san of sans) {
+    const fenBefore = chess.fen();
+    let move;
+    try {
+      move = chess.move(san);
+    } catch {
+      // The server wrote this log; an unreplayable move means a bug rather than bad
+      // input, and half a game is still worth reviewing.
+      break;
+    }
+    const record = toRecord(move, fenBefore);
+    records.push(record);
+    useGame.getState().appendPly(record);
+  }
+
+  useGame.getState().patch({ status: "over", result, viewPly: records.length });
+  syncPosition();
+
+  await getAnalyst().init();
+  if (signal?.aborted) return;
+
+  /* Every position including the start, because judging a move needs the evaluation
+     on both sides of it and ply 0 is the left-hand side of the first one. */
+  const total = records.length + 1;
+  await analyse(0, START_FEN);
+  onProgress?.(1, total);
+
+  for (const record of records) {
+    if (signal?.aborted) return;
+    await analyse(record.ply, record.fenAfter);
+    onProgress?.(record.ply + 1, total);
+  }
+
+  // Only the player's own moves get explained, exactly as in an engine game.
+  const mine = records.filter(
+    (record) => record.side === (playerColor === "w" ? "white" : "black"),
+  );
+  for (const record of mine) {
+    if (signal?.aborted) return;
+    await judgeAndExplain(record);
+  }
 }

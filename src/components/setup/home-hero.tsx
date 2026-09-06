@@ -79,11 +79,25 @@ export function HomeHero() {
             </Link>
           </Button>
 
+          {/* Real now. Signing in is only required from here — the engine game above
+              still needs no account, which is the whole reason it is listed first. */}
           <Button
             asChild
             size="lg"
             variant="outline"
             className="h-12 w-full justify-start gap-3 px-4"
+          >
+            <Link href="/play/friend">
+              <Users className="size-4 shrink-0" aria-hidden />
+              Play a friend
+              <ChevronRight className="ms-auto size-4 shrink-0 opacity-70" aria-hidden />
+            </Link>
+          </Button>
+          <Button
+            asChild
+            size="lg"
+            variant="ghost"
+            className="h-11 w-full justify-start gap-3 px-4"
           >
             <Link href="/settings">
               <Settings2 className="size-4 shrink-0" aria-hidden />
@@ -93,19 +107,10 @@ export function HomeHero() {
           </Button>
         </div>
 
-        {/* Multiplayer is planned, so it gets an honest placeholder rather than a
-            missing feature people go looking for. */}
-        <div className="mt-2.5 flex items-center gap-3 rounded-lg border border-dashed px-4 py-2.5 text-sm text-muted-foreground">
-          <Users className="size-4 shrink-0" aria-hidden />
-          Play a friend
-          <span className="ms-auto rounded-full bg-muted px-2 py-0.5 text-2xs font-medium">
-            Soon
-          </span>
-        </div>
-
         <p className="mt-5 text-2xs leading-relaxed text-muted-foreground">
-          The engine runs client-side. Nothing about your game leaves the browser
-          until the coach is asked for an explanation.
+          The engine runs client-side. Nothing about a game against it leaves the
+          browser until the coach is asked for an explanation. Playing a person needs
+          an account, and no engine help is available while you do.
         </p>
       </div>
     </div>
