@@ -149,17 +149,17 @@ export function remaining(
  */
 export function liveRemaining(input: {
   clock: ClockState;
-  last: StoredMove | null;
+  /** Banked time, as of the last move. `remaining()` produces it. */
+  banked: Record<Seat, number>;
   turn: Seat;
   turnStartedAt: number;
   now: number;
 }): Record<Seat, number> {
-  const { clock, last, turn, turnStartedAt, now } = input;
-  const base = remaining(clock, last);
-  if (clock.initialMs === 0) return base;
+  const { clock, banked, turn, turnStartedAt, now } = input;
+  if (clock.initialMs === 0) return banked;
   return {
-    ...base,
-    [turn]: Math.max(0, base[turn] - Math.max(0, now - turnStartedAt)),
+    ...banked,
+    [turn]: Math.max(0, banked[turn] - Math.max(0, now - turnStartedAt)),
   };
 }
 
@@ -171,9 +171,10 @@ export function flagged(input: {
   turnStartedAt: number;
   now: number;
 }): Seat | null {
-  if (input.clock.initialMs === 0) return null;
-  const live = liveRemaining(input);
-  return live[input.turn] <= 0 ? input.turn : null;
+  const { clock, last, ...rest } = input;
+  if (clock.initialMs === 0) return null;
+  const live = liveRemaining({ clock, banked: remaining(clock, last), ...rest });
+  return live[rest.turn] <= 0 ? rest.turn : null;
 }
 
 /** Why a position is over, from the position alone. */

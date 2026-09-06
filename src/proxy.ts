@@ -1,18 +1,28 @@
-import { clerkMiddleware } from "@clerk/nextjs/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-/* Nothing is protected, deliberately.
-   Single player is the whole product today: it runs the engine locally, needs no
-   network after the first load, and the landing page promises that nothing about
-   your game leaves the browser until the coach is asked. Putting a sign-in wall in
-   front of that would be a regression dressed as a feature.
+/** Routes that cannot work without an identity. */
+const ONLINE_ONLY = createRouteMatcher([
+  "/g(.*)",
+  "/play/friend(.*)",
+  "/play/online(.*)",
+  "/api/game(.*)",
+  "/api/queue(.*)",
+]);
 
-   So this only *reads* the session and makes it available. Routes that genuinely
-   need an account — the multiplayer rooms and the matchmaking queue — will call
-   `auth.protect()` themselves when they exist. */
 /* Named `proxy.ts`, not `middleware.ts`: Next 16 renamed the convention and warns
    on the old name at build time. The export is still Clerk's `clerkMiddleware()` —
    only the file the framework looks for changed. */
-export default clerkMiddleware();
+export default clerkMiddleware(async (auth, request) => {
+  /* The multiplayer surface is the only part of the app that needs an account: an
+     online game has to know who is sitting where, and a rating belongs to somebody.
+     `protect()` redirects a browser to sign-in and returns 401 to a fetch, which is
+     the right answer for each.
+
+     Everything else stays open. The engine game, the review, the drills and the
+     concept pages all work with no account, no network and nothing leaving the
+     browser — putting a wall in front of that would be a regression. */
+  if (ONLINE_ONLY(request)) await auth.protect();
+});
 
 export const config = {
   matcher: [

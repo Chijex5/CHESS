@@ -149,7 +149,7 @@ describe("clocks", () => {
   it("counts down only the side that is thinking", () => {
     const live = liveRemaining({
       clock: BLITZ,
-      last: stored(1, "e4", 175_000, 180_000, T0),
+      banked: { white: 175_000, black: 180_000 },
       turn: "black",
       turnStartedAt: T0,
       now: T0 + 7_000,
@@ -160,7 +160,7 @@ describe("clocks", () => {
   it("never reports a negative clock", () => {
     const live = liveRemaining({
       clock: BLITZ,
-      last: stored(1, "e4", 1_000, 500, T0),
+      banked: { white: 1_000, black: 500 },
       turn: "black",
       turnStartedAt: T0,
       now: T0 + 9_000,
@@ -223,5 +223,49 @@ describe("replay", () => {
     expect(position.ply).toBe(3);
     expect(position.turn).toBe("black");
     expect(position.board.fen()).toContain(" b ");
+  });
+});
+
+describe("the snapshot contract", () => {
+  /* The one that would have shipped a silent bug: the server used to project the
+     clocks to `now` before serialising, and the client projected the same figures
+     again from `turnStartedAt` — so every reading double-counted the thinking time
+     and a blitz clock ran twice as fast as the one deciding the game. */
+  it("projects the thinking time exactly once", () => {
+    const banked = { white: 100_000, black: 90_000 };
+    const once = liveRemaining({
+      clock: BLITZ,
+      banked,
+      turn: "black",
+      turnStartedAt: T0,
+      now: T0 + 4_000,
+    });
+    expect(once.black).toBe(86_000);
+
+    // Feeding an already-projected figure back in is what the bug did.
+    const twice = liveRemaining({
+      clock: BLITZ,
+      banked: once,
+      turn: "black",
+      turnStartedAt: T0,
+      now: T0 + 4_000,
+    });
+    expect(twice.black).toBe(82_000);
+    expect(twice.black).not.toBe(once.black);
+  });
+
+  it("agrees with the flag adjudicator, which is what decides the game", () => {
+    const last = stored(1, "e4", 100_000, 300, T0);
+    const live = liveRemaining({
+      clock: BLITZ,
+      banked: remaining(BLITZ, last),
+      turn: "black",
+      turnStartedAt: T0,
+      now: T0 + 400,
+    });
+    expect(live.black).toBe(0);
+    expect(
+      flagged({ clock: BLITZ, last, turn: "black", turnStartedAt: T0, now: T0 + 400 }),
+    ).toBe("black");
   });
 });
