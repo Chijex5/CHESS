@@ -9,15 +9,21 @@
     "lint": "eslint",
     "engine": "node scripts/copy-engine.mjs",
     "concepts": "node scripts/check-concepts.mjs",
-    "verify": "node scripts/check-concepts.mjs && tsc --noEmit && eslint && next build"
+    "verify": "node scripts/check-concepts.mjs && tsc --noEmit && eslint && vitest run && next build",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file=.env.local node_modules/drizzle-kit/bin.cjs migrate",
+    "db:studio": "node --env-file=.env.local node_modules/drizzle-kit/bin.cjs studio",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.63",
     "@clerk/nextjs": "^7.9.1",
+    "@neondatabase/serverless": "^1.1.0",
     "ai": "^7.0.92",
     "chess.js": "1.4.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.39.0",
     "next": "16.3.4",
     "next-themes": "^0.4.6",
@@ -36,10 +42,12 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.0"
   },
   "packageManager": "pnpm@10.28.0"
 }
