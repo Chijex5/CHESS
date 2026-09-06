@@ -711,6 +711,16 @@ export async function analyseFinishedGame(input: {
 
   for (const controller of coachAborts.values()) controller.abort();
   coachAborts = new Map();
+  hintAbort?.abort();
+  useHint.getState().clear();
+  deferred = [];
+  // These stores normally survive a refresh so an engine-game review can be resumed.
+  // An online review is a new, identified game, however: clearing both memory and
+  // the persisted snapshots prevents a late hydration from another game being
+  // mistaken for this one's positions or coaching notes.
+  useCoach.persist.clearStorage();
+  useEngine.persist.clearStorage();
+  useGame.persist.clearStorage();
   useCoach.getState().clear();
   useEngine.getState().reset();
   useGame.getState().reset(playerColor);

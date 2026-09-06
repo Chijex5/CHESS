@@ -89,8 +89,7 @@ export function AnalyseGame({ gameId }: { gameId: string }) {
         <Cpu className="mx-auto size-7 animate-pulse text-primary" aria-hidden />
         <h1 className="mt-3 text-lg font-semibold">Working through the game</h1>
         <p className="mt-2 font-serif text-base leading-relaxed text-muted-foreground">
-          Stockfish is searching every position you played, in your browser. Nothing
-          was running while the game was live — that was the point.
+          Finding the key moments and better choices for your moves.
         </p>
 
         <Progress value={pct} className="mt-6" />
@@ -108,6 +107,7 @@ export function AnalyseGame({ gameId }: { gameId: string }) {
 function resultOf(snapshot: GameSnapshot): GameResult {
   const won = snapshot.winner === "draw" ? null : snapshot.winner === snapshot.seat;
   const opponent = snapshot.seat === "white" ? snapshot.black : snapshot.white;
+  const player = snapshot.seat === "white" ? snapshot.white : snapshot.black;
   return {
     outcome:
       snapshot.winner === "draw"
@@ -117,5 +117,7 @@ function resultOf(snapshot: GameSnapshot): GameResult {
       ? `${snapshot.ending ?? "game over"} · against ${opponent.username}`
       : (snapshot.ending ?? "game over"),
     playerWon: won,
+    playerName: player?.username,
+    opponentName: opponent?.username,
   };
 }
