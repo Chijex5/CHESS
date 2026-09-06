@@ -32,6 +32,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the one that documents which credentials are needed. `.env*` swallowed
+# it, so the file explaining how to run the project was never in the repository.
+!.env.example
 
 # vercel
 .vercel

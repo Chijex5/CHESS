@@ -45,7 +45,15 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {/* Inside <body>, not wrapping <html>. Both work today, but Next's cache
             components require it here, and this project is one `next.config`
             flag away from using them. */}
-        <ClerkProvider>
+        {/* The URLs are set here rather than through NEXT_PUBLIC_CLERK_SIGN_IN_URL
+            because a missing env var silently falls back to Clerk's hosted pages,
+            which are themed like Clerk and not like this app. */}
+        <ClerkProvider
+          signInUrl="/sign-in"
+          signUpUrl="/sign-up"
+          signInFallbackRedirectUrl="/play"
+          signUpFallbackRedirectUrl="/play"
+        >
           <ThemeProvider>
             <TooltipProvider delayDuration={220}>{children}</TooltipProvider>
             <Toaster position="top-center" />
