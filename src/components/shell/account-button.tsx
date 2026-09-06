@@ -68,9 +68,12 @@ function Handle() {
   if (!user?.username) return null;
   return (
     <span className="hidden items-baseline gap-1.5 sm:flex">
-      <span className="max-w-32 truncate text-xs font-medium text-muted-foreground">
+      <Link
+        href="/profile"
+        className="max-w-32 truncate text-xs font-medium text-muted-foreground hover:text-foreground"
+      >
         {user.username}
-      </span>
+      </Link>
       {rating && (
         <span
           className="tnum font-mono text-2xs text-muted-foreground/70"

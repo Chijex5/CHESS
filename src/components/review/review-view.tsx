@@ -97,6 +97,10 @@ export function ReviewView() {
     [game.plies, analysis, annotations, game.hintedPlies, game.playerColor],
   );
   const { accuracy, qualities, hintedCount } = stats;
+  const playerName = game.result?.playerName ?? "You";
+  const opponentName = game.result?.opponentName ?? `Stockfish ${settings.elo}`;
+  const whiteName = game.playerColor === "w" ? playerName : opponentName;
+  const blackName = game.playerColor === "b" ? playerName : opponentName;
 
   const arrows = useMemo<BoardArrow[]>(() => {
     if (!active) return [];
@@ -123,8 +127,8 @@ export function ReviewView() {
     }
     const pgn = toPgn(game.plies, {
       Event: "AI Chess Coach",
-      White: game.playerColor === "w" ? "You" : `Stockfish ${settings.elo}`,
-      Black: game.playerColor === "w" ? `Stockfish ${settings.elo}` : "You",
+      White: whiteName,
+      Black: blackName,
       Result: game.result?.playerWon === null ? "1/2-1/2" : game.result?.playerWon ? "1-0" : "0-1",
       Date: new Date().toISOString().slice(0, 10),
     }, comments);
@@ -174,8 +178,10 @@ export function ReviewView() {
               {game.result?.outcome ?? "Game in progress"}
             </h1>
             <p className="text-xs text-muted-foreground">
-              {game.result?.detail ?? `${Math.ceil(total / 2)} moves so far`} · vs Stockfish 18 at{" "}
-              {opponentFor(settings.elo).name} ({settings.elo})
+              {game.result?.detail ?? `${Math.ceil(total / 2)} moves so far`}
+              {!game.result?.opponentName && (
+                <> · vs Stockfish 18 at {opponentFor(settings.elo).name} ({settings.elo})</>
+              )}
             </p>
           </div>
           <div className="ms-auto flex flex-wrap items-center gap-2">
@@ -196,12 +202,12 @@ export function ReviewView() {
           <AccuracyDial
             value={accuracy.white ?? 0}
             label={`White · ${accuracy.white?.toFixed(1) ?? "—"}%`}
-            sublabel={game.playerColor === "w" ? "You" : "Stockfish"}
+            sublabel={whiteName}
           />
           <AccuracyDial
             value={accuracy.black ?? 0}
             label={`Black · ${accuracy.black?.toFixed(1) ?? "—"}%`}
-            sublabel={game.playerColor === "b" ? "You" : "Stockfish"}
+            sublabel={blackName}
           />
           <div className="sm:col-span-2">
             <div className="mb-2 flex items-baseline justify-between gap-3">

@@ -120,4 +120,7 @@ export type GameResult = {
   outcome: string;
   detail: string;
   playerWon: boolean | null;
+  /** Set for a reviewed multiplayer game so the review never invents an engine opponent. */
+  playerName?: string;
+  opponentName?: string;
 };
