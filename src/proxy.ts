@@ -6,7 +6,11 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
  *  for a browser following an invite link and useless to a `fetch` — so the game
  *  endpoints check the session themselves and return a 401 with a reason in the
  *  body. One mechanism per audience. */
-const ONLINE_ONLY = createRouteMatcher(["/g(.*)", "/play/friend(.*)"]);
+const ONLINE_ONLY = createRouteMatcher([
+  "/g(.*)",
+  "/play/friend(.*)",
+  "/play/online(.*)",
+]);
 
 /* Named `proxy.ts`, not `middleware.ts`: Next 16 renamed the convention and warns
    on the old name at build time. The export is still Clerk's `clerkMiddleware()` —

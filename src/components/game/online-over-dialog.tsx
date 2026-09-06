@@ -89,10 +89,40 @@ export function OnlineOverDialog({
           </DialogDescription>
         </div>
 
-        {snapshot.rated && opponent && (
-          <p className="mt-4 px-5 text-center text-sm text-muted-foreground">
-            Ratings update within a moment.
-          </p>
+        {snapshot.rated && seat && (
+          <div className="mt-4 px-5">
+            {snapshot.ratings ? (
+              <div className="flex items-center justify-center gap-2 rounded-lg border bg-muted/30 px-3 py-2.5">
+                <span className="text-2xs text-muted-foreground">Rating</span>
+                <span className="tnum font-mono text-sm text-muted-foreground line-through">
+                  {snapshot.ratings[seat].before}
+                </span>
+                <span className="tnum font-mono text-lg font-semibold">
+                  {snapshot.ratings[seat].after}
+                </span>
+                {(() => {
+                  const delta =
+                    snapshot.ratings[seat].after - snapshot.ratings[seat].before;
+                  if (delta === 0) return null;
+                  return (
+                    <span
+                      className={cn(
+                        "tnum font-mono text-xs font-semibold",
+                        delta > 0 ? "text-q-best-ink" : "text-q-mistake-ink",
+                      )}
+                    >
+                      {delta > 0 ? "+" : "−"}
+                      {Math.abs(delta)}
+                    </span>
+                  );
+                })()}
+              </div>
+            ) : (
+              <p className="text-center text-sm text-muted-foreground">
+                Working out the new ratings…
+              </p>
+            )}
+          </div>
         )}
 
         <div className="mt-5 flex flex-col gap-2 border-t bg-muted/20 p-4">

@@ -35,6 +35,10 @@ function fingerprintOf(state: GameSnapshot): string {
     state.winner ?? "",
     state.ending ?? "",
     state.offer ? `${state.offer.kind}:${state.offer.by}` : "",
+    /* Ratings land a moment after the result, in a second write. Without them here the
+       dialog would show "working out the new ratings…" until something else changed —
+       which, the game being over, is never. */
+    state.ratings ? `${state.ratings.white.after}:${state.ratings.black.after}` : "",
     // The clock's fixed point. It moves when a game starts and when a move lands, and
     // a client projecting from a stale one shows the wrong time.
     state.turnStartedAt,
@@ -96,7 +100,14 @@ export async function GET(
           send({ type: "snapshot", snapshot: state }, state.seq);
         }
 
-        if (state.status === "finished" || state.status === "abandoned") {
+        /* Closed once there is provably nothing left to send. A rated game writes its
+           ratings a moment *after* the result, in a second statement, so closing on
+           `finished` alone would shut the door before the numbers arrived and leave the
+           dialog saying "working out the new ratings…" for good. */
+        const settled =
+          state.status === "abandoned" ||
+          (state.status === "finished" && (!state.rated || state.ratings !== null));
+        if (settled) {
           open = false;
           try {
             controller.close();

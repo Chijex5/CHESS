@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight, Settings2, Swords, Users } from "lucide-react";
+import { ChevronRight, Globe, Settings2, Swords, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChessBoard } from "@/components/board/chess-board";
 import { opponentFor } from "@/lib/engine/opponents";
@@ -79,20 +79,42 @@ export function HomeHero() {
             </Link>
           </Button>
 
-          {/* Real now. Signing in is only required from here — the engine game above
-              still needs no account, which is the whole reason it is listed first. */}
-          <Button
-            asChild
-            size="lg"
-            variant="outline"
-            className="h-12 w-full justify-start gap-3 px-4"
-          >
-            <Link href="/play/friend">
-              <Users className="size-4 shrink-0" aria-hidden />
-              Play a friend
-              <ChevronRight className="ms-auto size-4 shrink-0 opacity-70" aria-hidden />
-            </Link>
-          </Button>
+          {/* Both real now. Signing in is only required from here down — the engine
+              game above needs no account, which is why it is listed first. */}
+          <div className="flex gap-2.5">
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="h-12 flex-1 justify-start gap-2.5 px-3.5"
+            >
+              <Link href="/play/online">
+                <Globe className="size-4 shrink-0" aria-hidden />
+                <span className="flex min-w-0 flex-col items-start">
+                  <span className="text-sm leading-tight">A stranger</span>
+                  <span className="text-2xs font-normal leading-tight opacity-70">
+                    Rated
+                  </span>
+                </span>
+              </Link>
+            </Button>
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="h-12 flex-1 justify-start gap-2.5 px-3.5"
+            >
+              <Link href="/play/friend">
+                <Users className="size-4 shrink-0" aria-hidden />
+                <span className="flex min-w-0 flex-col items-start">
+                  <span className="text-sm leading-tight">A friend</span>
+                  <span className="text-2xs font-normal leading-tight opacity-70">
+                    By link
+                  </span>
+                </span>
+              </Link>
+            </Button>
+          </div>
           <Button
             asChild
             size="lg"

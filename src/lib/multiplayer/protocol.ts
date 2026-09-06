@@ -58,6 +58,8 @@ export type GameSnapshot = {
   ending: GameEnding | null;
   offer: { kind: "draw" | "rematch"; by: Seat } | null;
   rated: boolean;
+  /** Present once a rated game has finished and ratings have been applied. */
+  ratings: Record<Seat, { before: number; after: number }> | null;
 };
 
 /* Two events, and one of them is a heartbeat.

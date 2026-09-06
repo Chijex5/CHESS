@@ -14,6 +14,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      /* `server-only` throws on import unless the importer is a React Server
+         Component, which a test runner is not. Its whole job is to fail a client
+         bundle at build time, so stubbing it here removes a guard that is already
+         enforced where it matters and blocks testing server logic where it is not. */
+      "server-only": fileURLToPath(new URL("./src/test/server-only.ts", import.meta.url)),
     },
   },
 });

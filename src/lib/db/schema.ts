@@ -96,6 +96,13 @@ export const games = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     startedAt: timestamp("started_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),
+    /* What the game did to each rating, written when it ends. Stored rather than
+       derived because the "before" value is overwritten the instant the update lands,
+       and a player who reloads the result should still see what they gained. */
+    whiteRatingBefore: integer("white_rating_before"),
+    whiteRatingAfter: integer("white_rating_after"),
+    blackRatingBefore: integer("black_rating_before"),
+    blackRatingAfter: integer("black_rating_after"),
   },
   (table) => [
     index("games_white_idx").on(table.whiteId, table.createdAt),

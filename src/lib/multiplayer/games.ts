@@ -40,6 +40,38 @@ export type CreateOptions = {
   rated: boolean;
 };
 
+/**
+ * Creates a game with both seats already filled — the matchmaking path.
+ *
+ * Distinct from `createGame` on purpose. An invite link creates a half-empty game and
+ * waits for somebody to claim the other seat, because it does not know who is coming.
+ * A pairing knows both players, so it seats both in one insert and starts the clock
+ * immediately: routing one of them through `joinGame` afterwards left a window where
+ * the game existed with a seat still open, which is how a stale queue entry ended up
+ * being paired into a game neither matched player was sitting in.
+ */
+export async function createPairedGame(options: {
+  white: string;
+  black: string;
+  initialMs: number;
+  incrementMs: number;
+}): Promise<string> {
+  const id = newGameId();
+  const startedAt = new Date();
+  await db.insert(games).values({
+    id,
+    whiteId: options.white,
+    blackId: options.black,
+    initialMs: options.initialMs,
+    incrementMs: options.incrementMs,
+    rated: 1,
+    status: "active",
+    startedAt,
+  });
+  await publishChange(id, 0);
+  return id;
+}
+
 export async function createGame(options: CreateOptions): Promise<string> {
   const seat: Seat =
     options.side === "random" ? (Math.random() < 0.5 ? "white" : "black") : options.side;
@@ -179,6 +211,19 @@ export async function snapshot(id: string, userId: string | null): Promise<GameS
     ending: game.ending,
     offer,
     rated: game.rated === 1,
+    ratings:
+      game.whiteRatingAfter !== null && game.blackRatingAfter !== null
+        ? {
+            white: {
+              before: game.whiteRatingBefore ?? game.whiteRatingAfter,
+              after: game.whiteRatingAfter,
+            },
+            black: {
+              before: game.blackRatingBefore ?? game.blackRatingAfter,
+              after: game.blackRatingAfter,
+            },
+          }
+        : null,
   };
 }
 
@@ -319,6 +364,18 @@ export async function finish(
   let ratings: Record<Seat, { before: number; after: number }> | null = null;
   if (closed.rated === 1 && closed.whiteId && closed.blackId) {
     ratings = await applyRatings(closed.whiteId, closed.blackId, winner);
+    if (ratings) {
+      // Recorded on the game so a reload still shows what it cost or paid.
+      await db
+        .update(games)
+        .set({
+          whiteRatingBefore: ratings.white.before,
+          whiteRatingAfter: ratings.white.after,
+          blackRatingBefore: ratings.black.before,
+          blackRatingAfter: ratings.black.after,
+        })
+        .where(eq(games.id, id));
+    }
   }
 
   await publishChange(id, -1);

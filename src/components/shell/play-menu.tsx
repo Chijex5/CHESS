@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Cpu, KeyRound, Swords, Users } from "lucide-react";
+import { ChevronDown, Cpu, Globe, KeyRound, Swords, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -63,12 +63,23 @@ export function PlayMenu({ active }: { active: boolean }) {
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>
+            <Link href="/play/online">
+              <Globe className="size-4" aria-hidden />
+              <span className="flex flex-col">
+                Play a stranger
+                <span className="text-2xs text-muted-foreground">
+                  Rated, paired by rating
+                </span>
+              </span>
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
             <Link href="/play/friend">
               <Users className="size-4" aria-hidden />
               <span className="flex flex-col">
                 Play a friend
                 <span className="text-2xs text-muted-foreground">
-                  Create a game and send the link
+                  Unrated, invite by link
                 </span>
               </span>
             </Link>

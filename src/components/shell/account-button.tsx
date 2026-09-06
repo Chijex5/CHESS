@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Show, UserButton, useUser } from "@clerk/nextjs";
 import { LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -34,15 +35,55 @@ export function AccountButton() {
   );
 }
 
-/* The handle, beside the avatar. Usernames are required on this instance, so it is
-   always there — but an OAuth sign-up sets it a step later than the session, and a
-   header that renders "undefined" for that half-second is worse than one that waits. */
+/* The handle and the rating, beside the avatar. Usernames are required on this
+   instance, so the name is always there — but an OAuth sign-up sets it a step later
+   than the session, and a header rendering "undefined" for that half-second is worse
+   than one that waits.
+
+   The rating is fetched rather than read from Clerk: it lives in Postgres, changes
+   when a rated game ends, and putting it in session claims would mean a stale number
+   until the next token refresh. */
 function Handle() {
   const { user } = useUser();
+  const [rating, setRating] = useState<{ value: number; provisional: boolean } | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!user) return;
+    let live = true;
+    void fetch("/api/me", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((body) => {
+        if (live && body?.rating) setRating(body.rating);
+      })
+      .catch(() => {
+        // A missing rating is a missing badge, not an error worth showing.
+      });
+    return () => {
+      live = false;
+    };
+  }, [user]);
+
   if (!user?.username) return null;
   return (
-    <span className="hidden max-w-32 truncate text-xs font-medium text-muted-foreground sm:block">
-      {user.username}
+    <span className="hidden items-baseline gap-1.5 sm:flex">
+      <span className="max-w-32 truncate text-xs font-medium text-muted-foreground">
+        {user.username}
+      </span>
+      {rating && (
+        <span
+          className="tnum font-mono text-2xs text-muted-foreground/70"
+          title={
+            rating.provisional
+              ? "Provisional — the rating is still settling"
+              : "Rating"
+          }
+        >
+          {rating.value}
+          {rating.provisional && "?"}
+        </span>
+      )}
     </span>
   );
 }
