@@ -15,6 +15,13 @@
       "when": 1788666081499,
       "tag": "0001_supreme_johnny_blaze",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788822086949,
+      "tag": "0002_square_iceman",
+      "breakpoints": true
     }
   ]
 }

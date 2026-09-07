@@ -57,6 +57,12 @@ export type GameSnapshot = {
   winner: GameWinner | null;
   ending: GameEnding | null;
   offer: { kind: "draw" | "rematch"; by: Seat } | null;
+  /** Server time the game ended, or null while it is still going. The rematch
+   *  window is measured from it. */
+  endedAt: number | null;
+  /** The game both players agreed to move to. Set once, when a rematch is accepted,
+   *  and the only thing either client needs in order to arrive there together. */
+  rematchId: string | null;
   rated: boolean;
   /** Present once a rated game has finished and ratings have been applied. */
   ratings: Record<Seat, { before: number; after: number }> | null;
@@ -85,3 +91,94 @@ export type MoveRequest = {
   /** The ply the client believes it is playing. */
   seq: number;
 };
+
+/* ── The rematch window ───────────────────────────────────────────────────────
+   A rematch is only offerable for a couple of minutes after the game ends, and the
+   number lives here because three places have to agree on it: the button that offers
+   one, the route that accepts one, and the event stream that has to stay open long
+   enough to deliver it. If they disagreed, the visible failure would be an offer sent
+   into a closed stream — the opponent never hears it and the offerer waits forever.
+
+   Two minutes is how long two people who have just finished a game plausibly remain
+   at the board. After that the stream closes, the function stops billing, and the
+   honest answer is a new game rather than an offer nobody will receive.
+   ─────────────────────────────────────────────────────────────────────────── */
+export const REMATCH_WINDOW_MS = 120_000;
+
+export type RematchPhase =
+  /** Not a finished game you played in, so there is nobody to ask. */
+  | "unavailable"
+  /** Offerable, and nothing outstanding. */
+  | "idle"
+  /** You asked; they have not answered. */
+  | "offered"
+  /** They asked; the answer is yours. */
+  | "received"
+  /** Agreed — `rematchId` says where. */
+  | "agreed"
+  /** Too long has passed. Nothing more will be delivered on this game. */
+  | "expired";
+
+/**
+ * What the rematch affordance should be, from a snapshot alone.
+ *
+ * A pure function rather than a hook because two components need the same answer —
+ * the game-over dialog and the status line under the board — and because getting it
+ * wrong is the kind of thing worth pinning with tests rather than clicking through.
+ *
+ * `now` must be *server* time (the client corrects for skew), since the window is
+ * measured against a server-stamped `endedAt`.
+ */
+export function rematchPhase(
+  snapshot: Pick<
+    GameSnapshot,
+    "status" | "seat" | "white" | "black" | "offer" | "endedAt" | "rematchId"
+  >,
+  now: number,
+): RematchPhase {
+  if (snapshot.rematchId) return "agreed";
+  // A spectator has no seat to offer from, and an unfinished or never-started game
+  // has nothing to rematch.
+  if (snapshot.status !== "finished" || !snapshot.seat) return "unavailable";
+  if (!snapshot.white || !snapshot.black) return "unavailable";
+
+  /* The window closes on an outstanding offer too, rather than keeping it alive
+     until answered. It has to: the stream that would carry the answer shuts at the
+     same deadline, so an offer that outlived the window would be one the opponent
+     can no longer hear and the offerer would wait on forever. A finished game with
+     no `endedAt` cannot be measured at all, so it counts as past. */
+  if (snapshot.endedAt === null || now - snapshot.endedAt > REMATCH_WINDOW_MS) {
+    return "expired";
+  }
+  const offer = snapshot.offer?.kind === "rematch" ? snapshot.offer : null;
+  if (offer) return offer.by === snapshot.seat ? "offered" : "received";
+  return "idle";
+}
+
+/**
+ * Whether a game's event stream has nothing left to deliver.
+ *
+ * Shared by the server, which closes the stream on it, and the client, which stops
+ * reconnecting to it — and it has to be shared, because `EventSource` treats a clean
+ * end of stream as a reason to reconnect. Left to itself the browser would reopen the
+ * stream of a finished game every few seconds for as long as the tab was open, and the
+ * server would answer each time with a snapshot and another close.
+ *
+ * Two things arrive *after* the result and so must not close the door early: the
+ * ratings, which are a second write, and a rematch offer, which is a second
+ * conversation.
+ */
+export function streamSettled(
+  snapshot: Pick<
+    GameSnapshot,
+    "status" | "rated" | "ratings" | "rematchId" | "endedAt"
+  >,
+  now: number,
+): boolean {
+  if (snapshot.status === "abandoned") return true;
+  if (snapshot.status !== "finished") return false;
+  if (snapshot.rated && snapshot.ratings === null) return false;
+  // Agreed: both clients are on their way to the new game and this one is history.
+  if (snapshot.rematchId !== null) return true;
+  return snapshot.endedAt === null || now - snapshot.endedAt > REMATCH_WINDOW_MS;
+}

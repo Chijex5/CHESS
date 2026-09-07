@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { games, moves, offers, players } from "@/lib/db/schema";
+import { games, moves, offers, players, type Game } from "@/lib/db/schema";
 import { applyGame, type Rating } from "@/lib/game/rating";
 import { publishChange } from "@/lib/realtime/bus";
 import { gameId as newGameId } from "./ids";
@@ -15,6 +15,7 @@ import {
   timeoutResult,
   type StoredMove,
 } from "./rules";
+import { REMATCH_WINDOW_MS } from "./protocol";
 import type {
   GameEnding,
   GameSnapshot,
@@ -49,12 +50,16 @@ export type CreateOptions = {
  * immediately: routing one of them through `joinGame` afterwards left a window where
  * the game existed with a seat still open, which is how a stale queue entry ended up
  * being paired into a game neither matched player was sitting in.
+ *
+ * Also the rematch path, which is the same shape — two known players, no seat to
+ * claim — and the reason `rated` is a parameter rather than always 1.
  */
 export async function createPairedGame(options: {
   white: string;
   black: string;
   initialMs: number;
   incrementMs: number;
+  rated: boolean;
 }): Promise<string> {
   const id = newGameId();
   const startedAt = new Date();
@@ -64,7 +69,7 @@ export async function createPairedGame(options: {
     blackId: options.black,
     initialMs: options.initialMs,
     incrementMs: options.incrementMs,
-    rated: 1,
+    rated: options.rated ? 1 : 0,
     status: "active",
     startedAt,
   });
@@ -210,6 +215,8 @@ export async function snapshot(id: string, userId: string | null): Promise<GameS
     winner: game.winner,
     ending: game.ending,
     offer,
+    endedAt: game.endedAt?.getTime() ?? null,
+    rematchId: game.rematchId,
     rated: game.rated === 1,
     ratings:
       game.whiteRatingAfter !== null && game.blackRatingAfter !== null
@@ -414,6 +421,139 @@ async function applyRatings(whiteId: string, blackId: string, winner: GameWinner
     white: { before: Math.round(w.rating), after: Math.round(next.white.rating) },
     black: { before: Math.round(b.rating), after: Math.round(next.black.rating) },
   };
+}
+
+/* ── Rematch ──────────────────────────────────────────────────────────────────
+   A finished game is immutable except for one field: where the two of them went
+   next. Everything below is about setting that field exactly once, because the whole
+   point is that both players end up in the *same* new game — two games would be
+   worse than none.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+export type RematchResult =
+  /** Agreed. `rematchId` is the game to go to; null means the request was recorded
+   *  (an offer made, or an offer declined) and there is nowhere to go yet. */
+  | { ok: true; rematchId: string | null }
+  | { ok: false; reason: string; status: number };
+
+type Refusal = { ok: false; reason: string; status: number };
+
+/** Where a rematch offer may be made or answered, and by whom. */
+async function rematchable(
+  id: string,
+  userId: string,
+): Promise<Refusal | { ok: true; game: Game; seat: Seat }> {
+  const game = await gameRow(id);
+  if (!game) return { ok: false, reason: "no-such-game", status: 404 };
+  if (game.status !== "finished") {
+    return { ok: false, reason: "game-not-finished", status: 409 };
+  }
+  const seat: Seat | null =
+    game.whiteId === userId ? "white" : game.blackId === userId ? "black" : null;
+  if (!seat) return { ok: false, reason: "not-a-player", status: 403 };
+  /* The same deadline the event stream closes on. Refused here as well as hidden in
+     the UI, because an offer accepted after the stream shut would leave one player
+     sitting in a new game the other never heard about. */
+  const endedAt = game.endedAt?.getTime() ?? null;
+  if (endedAt === null || Date.now() - endedAt > REMATCH_WINDOW_MS) {
+    return { ok: false, reason: "rematch-window-closed", status: 409 };
+  }
+  return { ok: true, game, seat };
+}
+
+export async function offerRematch(id: string, userId: string): Promise<RematchResult> {
+  const found = await rematchable(id, userId);
+  if (!found.ok) return found;
+  const { game, seat } = found;
+
+  // Already agreed: hand back where to go rather than opening a second negotiation.
+  if (game.rematchId) return { ok: true, rematchId: game.rematchId };
+
+  /* If the opponent has already offered, offering back *is* accepting. Without this,
+     two players who both press Rematch in the same second would each be waiting for
+     the other to answer an offer that had silently replaced theirs. */
+  const [open] = await db.select().from(offers).where(eq(offers.gameId, id));
+  if (open?.kind === "rematch" && open.offeredBy !== seat) {
+    return acceptRematch(id, userId);
+  }
+
+  await db
+    .insert(offers)
+    .values({ gameId: id, kind: "rematch", offeredBy: seat })
+    .onConflictDoUpdate({
+      target: offers.gameId,
+      set: { kind: "rematch", offeredBy: seat, offeredAt: new Date() },
+    });
+  await publishChange(id, -2);
+  return { ok: true, rematchId: null };
+}
+
+/**
+ * Accepts a rematch, creating the game both players will move to.
+ *
+ * The new game is inserted *before* the pointer is claimed, so that the pointer never
+ * refers to a game that does not exist — which the foreign key would refuse anyway.
+ * The cost is that the loser of a race has an orphan to clean up, and since it is a
+ * row with no moves and no players watching, deleting it is free.
+ */
+export async function acceptRematch(id: string, userId: string): Promise<RematchResult> {
+  const found = await rematchable(id, userId);
+  if (!found.ok) return found;
+  const { game, seat } = found;
+
+  if (game.rematchId) return { ok: true, rematchId: game.rematchId };
+
+  const [open] = await db.select().from(offers).where(eq(offers.gameId, id));
+  // You cannot accept your own offer, and there has to be one to accept.
+  if (!open || open.kind !== "rematch" || open.offeredBy === seat) {
+    return { ok: false, reason: "no-offer", status: 409 };
+  }
+  if (!game.whiteId || !game.blackId) {
+    return { ok: false, reason: "not-a-player", status: 409 };
+  }
+
+  /* Colours swap, which is the only reason a rematch is a distinct concept rather
+     than "make another game": playing the same person twice from the same side is
+     half a match. Time control and `rated` are inherited — a rematch of a rated game
+     is rated, as on every server, and beating the same opponent repeatedly pays less
+     each time because Glicko lowers their rating as it does. */
+  const rematchId = await createPairedGame({
+    white: game.blackId,
+    black: game.whiteId,
+    initialMs: game.initialMs,
+    incrementMs: game.incrementMs,
+    rated: game.rated === 1,
+  });
+
+  const [claimed] = await db
+    .update(games)
+    .set({ rematchId })
+    .where(and(eq(games.id, id), isNull(games.rematchId)))
+    .returning();
+
+  if (!claimed?.rematchId) {
+    // Someone else's accept landed first. Bin ours and send both players to theirs.
+    await db.delete(games).where(eq(games.id, rematchId));
+    const settled = await gameRow(id);
+    return settled?.rematchId
+      ? { ok: true, rematchId: settled.rematchId }
+      : { ok: false, reason: "rematch-failed", status: 409 };
+  }
+
+  await db.delete(offers).where(eq(offers.gameId, id));
+  /* On the *old* game's channel: that is the stream both players still have open, and
+     the snapshot it wakes now carries `rematchId`, which is how the player who offered
+     finds out where to go. */
+  await publishChange(id, -3);
+  return { ok: true, rematchId };
+}
+
+export async function declineRematch(id: string, userId: string): Promise<RematchResult> {
+  const found = await rematchable(id, userId);
+  if (!found.ok) return found;
+  await db.delete(offers).where(eq(offers.gameId, id));
+  await publishChange(id, -2);
+  return { ok: true, rematchId: null };
 }
 
 /** Games this player is in, newest first. */
