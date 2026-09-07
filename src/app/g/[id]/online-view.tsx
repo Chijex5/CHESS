@@ -350,7 +350,7 @@ function StatusLine({
             : `${snapshot.winner === "white" ? "White" : "Black"} won by ${snapshot.ending}`}
         </p>
         <Button asChild size="sm" variant="secondary" className="h-7 shrink-0 text-xs">
-          <Link href="/review">Review</Link>
+          <Link href={`/g/${gameId}/analyse`}>Analyse</Link>
         </Button>
         <Button asChild size="sm" variant="ghost" className="h-7 shrink-0 text-xs">
           <Link href="/play/friend">

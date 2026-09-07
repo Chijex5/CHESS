@@ -52,7 +52,7 @@ function Panel({
   );
 }
 
-export function ReviewView() {
+export function ReviewView({ gameId }: { gameId?: string }) {
   const game = useGame();
   const analysis = useEngine((state) => state.analysis);
   const byPly = useCoach((state) => state.byPly);
@@ -60,6 +60,8 @@ export function ReviewView() {
   const [viewPly, setViewPly] = useState<number | null>(null);
   const [flipped, setFlipped] = useState(false);
   const [concept, setConcept] = useState<Concept | null>(null);
+
+  const unavailable = Boolean(gameId && game.reviewGameId !== gameId);
 
   const annotations = useMemo(() => sortedAnnotations(byPly), [byPly]);
   const rows = useMemo(
@@ -97,6 +99,10 @@ export function ReviewView() {
     [game.plies, analysis, annotations, game.hintedPlies, game.playerColor],
   );
   const { accuracy, qualities, hintedCount } = stats;
+  const playerName = game.result?.playerName ?? "You";
+  const opponentName = game.result?.opponentName ?? `Stockfish ${settings.elo}`;
+  const whiteName = game.playerColor === "w" ? playerName : opponentName;
+  const blackName = game.playerColor === "b" ? playerName : opponentName;
 
   const arrows = useMemo<BoardArrow[]>(() => {
     if (!active) return [];
@@ -123,8 +129,8 @@ export function ReviewView() {
     }
     const pgn = toPgn(game.plies, {
       Event: "AI Chess Coach",
-      White: game.playerColor === "w" ? "You" : `Stockfish ${settings.elo}`,
-      Black: game.playerColor === "w" ? `Stockfish ${settings.elo}` : "You",
+      White: whiteName,
+      Black: blackName,
       Result: game.result?.playerWon === null ? "1/2-1/2" : game.result?.playerWon ? "1-0" : "0-1",
       Date: new Date().toISOString().slice(0, 10),
     }, comments);
@@ -136,15 +142,18 @@ export function ReviewView() {
     URL.revokeObjectURL(url);
   };
 
-  if (total === 0) {
+  if (unavailable || total === 0) {
     return (
       <div className="mx-auto grid w-full max-w-lg flex-1 place-items-center px-4 py-16 text-center">
         <div>
           <Trophy className="mx-auto size-8 text-muted-foreground/40" aria-hidden />
-          <h1 className="mt-3 text-lg font-semibold">No game to review yet</h1>
+          <h1 className="mt-3 text-lg font-semibold">
+            {unavailable ? "This review is not available in this browser" : "No game to review yet"}
+          </h1>
           <p className="mt-2 font-serif text-base leading-relaxed text-muted-foreground">
-            Play a game and this page fills in: accuracy, the evaluation curve,
-            your biggest swings, and the themes the coach kept citing.
+            {unavailable
+              ? "Analyse this game again to create its review."
+              : "Play a game and this page fills in: accuracy, the evaluation curve, your biggest swings, and the themes the coach kept citing."}
           </p>
           <Button asChild className="mt-5">
             <Link href="/play">
@@ -174,8 +183,10 @@ export function ReviewView() {
               {game.result?.outcome ?? "Game in progress"}
             </h1>
             <p className="text-xs text-muted-foreground">
-              {game.result?.detail ?? `${Math.ceil(total / 2)} moves so far`} · vs Stockfish 18 at{" "}
-              {opponentFor(settings.elo).name} ({settings.elo})
+              {game.result?.detail ?? `${Math.ceil(total / 2)} moves so far`}
+              {!game.result?.opponentName && (
+                <> · vs Stockfish 18 at {opponentFor(settings.elo).name} ({settings.elo})</>
+              )}
             </p>
           </div>
           <div className="ms-auto flex flex-wrap items-center gap-2">
@@ -196,12 +207,12 @@ export function ReviewView() {
           <AccuracyDial
             value={accuracy.white ?? 0}
             label={`White · ${accuracy.white?.toFixed(1) ?? "—"}%`}
-            sublabel={game.playerColor === "w" ? "You" : "Stockfish"}
+            sublabel={whiteName}
           />
           <AccuracyDial
             value={accuracy.black ?? 0}
             label={`Black · ${accuracy.black?.toFixed(1) ?? "—"}%`}
-            sublabel={game.playerColor === "b" ? "You" : "Stockfish"}
+            sublabel={blackName}
           />
           <div className="sm:col-span-2">
             <div className="mb-2 flex items-baseline justify-between gap-3">

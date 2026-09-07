@@ -24,6 +24,8 @@ type GameState = {
   flipped: boolean;
   status: GameStatus;
   result: GameResult | null;
+  /** Server game that produced this review; null for an engine game. */
+  reviewGameId: string | null;
   /** Legal destinations from each square, for the live position only. */
   legal: Record<string, Square[]>;
   selected: Square | null;
@@ -58,6 +60,7 @@ const initial: GameState = {
   flipped: false,
   status: "idle",
   result: null,
+  reviewGameId: null,
   legal: {},
   selected: null,
   checkSquare: null,
@@ -123,6 +126,7 @@ export const useGame = create<GameState & GameActions>()(
         flipped: state.flipped,
         status: state.status,
         result: state.result,
+        reviewGameId: state.reviewGameId,
         hintedPlies: state.hintedPlies,
       }),
     },
