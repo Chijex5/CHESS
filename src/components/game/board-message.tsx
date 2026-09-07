@@ -4,15 +4,17 @@ import { Loader2, Scale, TriangleAlert, Trophy } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export type BoardMessage =
   | { kind: "engine-error"; text: string }
-  | {
-      kind: "risk";
-      text: string;
-      onLookAgain: () => void;
-      onPlayAnyway: () => void;
-    }
   | { kind: "result"; text: string; won: boolean | null }
   | { kind: "thinking" }
   /** Who is winning, in words. The quietest thing this row ever holds. */
@@ -61,32 +63,6 @@ export function BoardMessageLine({
         </p>
       )}
 
-      {message?.kind === "risk" && (
-        <>
-          <TriangleAlert
-            className="size-3.5 shrink-0 text-q-inaccuracy-ink"
-            aria-hidden
-          />
-          <p className="min-w-0 flex-1 truncate text-xs font-medium">{message.text}</p>
-          <Button
-            size="sm"
-            variant="secondary"
-            className="h-7 shrink-0 text-xs"
-            onClick={message.onLookAgain}
-          >
-            Look again
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 shrink-0 text-xs"
-            onClick={message.onPlayAnyway}
-          >
-            Play it anyway
-          </Button>
-        </>
-      )}
-
       {message?.kind === "result" && (
         <>
           <Trophy
@@ -107,5 +83,45 @@ export function BoardMessageLine({
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * A hanging-piece warning blocks the attempted move, so it needs to take focus
+ * where the player is looking. Keeping it out of the compact status row also
+ * prevents the controls from being pushed out of view on narrow screens.
+ */
+export function RiskWarningDialog({
+  risk,
+  onLookAgain,
+  onPlayAnyway,
+}: {
+  risk: { reason: string } | null;
+  onLookAgain: () => void;
+  onPlayAnyway: () => void;
+}) {
+  return (
+    <Dialog
+      open={Boolean(risk)}
+      onOpenChange={(open) => {
+        if (!open) onLookAgain();
+      }}
+    >
+      <DialogContent showCloseButton={false} className="gap-5">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <TriangleAlert className="size-4 text-q-inaccuracy-ink" aria-hidden />
+            Your piece is hanging
+          </DialogTitle>
+          <DialogDescription>{risk?.reason}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onLookAgain}>
+            Look again
+          </Button>
+          <Button onClick={onPlayAnyway}>Play it anyway</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
