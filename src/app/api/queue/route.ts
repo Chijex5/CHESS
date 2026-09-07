@@ -68,6 +68,8 @@ export async function POST(request: Request) {
     black: whiteFirst ? pair.b : pair.a,
     initialMs: control.initialMs,
     incrementMs: control.incrementMs,
+    // A stranger paired on rating is the only evidence about strength we collect.
+    rated: true,
   });
 
   /* The other player learns about it by polling; ours is collected here rather than

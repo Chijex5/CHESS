@@ -9,6 +9,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 /* ── The multiplayer schema ───────────────────────────────────────────────────
@@ -103,6 +104,17 @@ export const games = pgTable(
     whiteRatingAfter: integer("white_rating_after"),
     blackRatingBefore: integer("black_rating_before"),
     blackRatingAfter: integer("black_rating_after"),
+    /* The game these two agreed to play next, set when a rematch is accepted.
+       A forward pointer on the *finished* game rather than a "rematch of" pointer on
+       the new one, because of who needs to read it: both players are still looking at
+       the game that just ended, and this is how the one who offered learns where to
+       go. Reading it costs nothing — the row is already loaded — where a backward
+       pointer would mean a second query on every snapshot.
+
+       It also settles the race. Two accepts (a double click, or both players offering
+       and accepting at once) must not create two games, and a conditional update on
+       `rematch_id IS NULL` decides that in one statement. */
+    rematchId: text("rematch_id").references((): AnyPgColumn => games.id),
   },
   (table) => [
     index("games_white_idx").on(table.whiteId, table.createdAt),

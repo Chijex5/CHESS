@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Frown, Handshake, RotateCcw, Sparkles, Trophy } from "lucide-react";
+import { Frown, Handshake, Sparkles, Swords, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +11,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Confetti } from "./confetti";
+import { RematchControls } from "./rematch-controls";
+import { useRematchPhase } from "@/lib/multiplayer/use-rematch-phase";
 import type { GameSnapshot } from "@/lib/multiplayer/protocol";
 
 /* ── The end of an online game ────────────────────────────────────────────────
@@ -55,6 +57,9 @@ export function OnlineOverDialog({
 
   const headline =
     outcome === "win" ? "You won" : outcome === "loss" ? "You lost" : "Draw";
+
+  const phase = useRematchPhase(snapshot);
+  const offerable = phase === "idle" || phase === "offered" || phase === "received";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -126,17 +131,32 @@ export function OnlineOverDialog({
         )}
 
         <div className="mt-5 flex flex-col gap-2 border-t bg-muted/20 p-4">
+          {/* Rematch first, and only for a couple of minutes. Both players are still
+              at the board right now, which is the only time the offer means anything —
+              and until this existed the only way back was a fresh invite link to
+              somebody who had already closed the tab. It renders nothing once the
+              window has passed, which is why analysis is not displaced by it. */}
+          <RematchControls snapshot={snapshot} phase={phase} layout="stack" />
+
           {/* Deliberately not "See your stats": there are none yet. This starts the
               analysis the engine game does as it goes, which for a finished game is
               two searches per move and takes a visible few seconds. */}
-          <Button asChild size="lg" className="h-11">
+          <Button
+            asChild
+            size="lg"
+            /* Analyse leads once the rematch window has closed, or when there was
+               never anyone to ask. Whichever action is actually available should be
+               the one that looks like the answer. */
+            variant={offerable ? "outline" : "default"}
+            className="h-11"
+          >
             <Link href={`/g/${snapshot.id}/analyse`}>
               <Sparkles className="size-4" aria-hidden /> Analyse this game
             </Link>
           </Button>
-          <Button asChild variant="outline" className="w-full">
+          <Button asChild variant="ghost" className="w-full">
             <Link href="/play/friend">
-              <RotateCcw className="size-4" aria-hidden /> New game
+              <Swords className="size-4" aria-hidden /> New game
             </Link>
           </Button>
         </div>

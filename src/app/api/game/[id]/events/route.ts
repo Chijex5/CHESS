@@ -2,7 +2,11 @@ import { auth } from "@clerk/nextjs/server";
 import { gameRow, snapshot } from "@/lib/multiplayer/games";
 import { normaliseGameId } from "@/lib/multiplayer/ids";
 import { subscribe } from "@/lib/realtime/bus";
-import type { GameSnapshot, ServerEvent } from "@/lib/multiplayer/protocol";
+import {
+  streamSettled,
+  type GameSnapshot,
+  type ServerEvent,
+} from "@/lib/multiplayer/protocol";
 
 /* One long-lived function per connected player. 300s is the Hobby ceiling and the
    stream is designed to be cut off: the browser reconnects on its own, sends
@@ -35,6 +39,10 @@ function fingerprintOf(state: GameSnapshot): string {
     state.winner ?? "",
     state.ending ?? "",
     state.offer ? `${state.offer.kind}:${state.offer.by}` : "",
+    /* Where a rematch was agreed to. This is the one fact a client acts on by leaving
+       the page, so a snapshot that omitted it would strand the player who offered on a
+       finished board while their opponent sat waiting in the new game. */
+    state.rematchId ?? "",
     /* Ratings land a moment after the result, in a second write. Without them here the
        dialog would show "working out the new ratings…" until something else changed —
        which, the game being over, is never. */
@@ -100,14 +108,11 @@ export async function GET(
           send({ type: "snapshot", snapshot: state }, state.seq);
         }
 
-        /* Closed once there is provably nothing left to send. A rated game writes its
-           ratings a moment *after* the result, in a second statement, so closing on
-           `finished` alone would shut the door before the numbers arrived and leave the
-           dialog saying "working out the new ratings…" for good. */
-        const settled =
-          state.status === "abandoned" ||
-          (state.status === "finished" && (!state.rated || state.ratings !== null));
-        if (settled) {
+        /* A finished game keeps its stream for the length of the rematch window: the
+           offer is made after the result and travels down this same channel. The
+           client stops reconnecting on the same predicate, so the two agree about
+           when the conversation is over. */
+        if (streamSettled(state, Date.now())) {
           open = false;
           try {
             controller.close();

@@ -2,17 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Flag, Handshake, Loader2, LogIn, Swords, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, Flag, Handshake, Loader2, LogIn, Swords, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ChessBoard } from "@/components/board/chess-board";
 import { PromotionPicker } from "@/components/board/promotion-picker";
 import { OpponentStrip } from "@/components/game/opponent-strip";
 import { OnlineOverDialog } from "@/components/game/online-over-dialog";
+import { RematchControls } from "@/components/game/rematch-controls";
 import { InvitePanel } from "./invite-panel";
 import { MoveList } from "@/components/game/move-list";
 import { useOnline } from "@/lib/store/online-store";
-import { connect, joinGame } from "@/lib/multiplayer/client";
+import { connect, joinGame, sendOffer } from "@/lib/multiplayer/client";
 import {
   boardFor,
   isMyTurn,
@@ -21,6 +23,7 @@ import {
   turnOf,
 } from "@/lib/multiplayer/controller";
 import { opposite, type Seat } from "@/lib/multiplayer/protocol";
+import { useRematchPhase } from "@/lib/multiplayer/use-rematch-phase";
 import { capturedFrom, parseFen, squareToIndex } from "@/lib/chess/fen";
 import { useSettings } from "@/lib/store/settings-store";
 import { playCue } from "@/lib/audio/sfx";
@@ -60,6 +63,30 @@ export function OnlineView({ gameId }: { gameId: string }) {
   useEffect(() => {
     if (justStarted) playCue("note");
   }, [justStarted]);
+
+  /* Both players end up in the new game from here, but by different routes: the one
+     who accepted was told the id in its own response, and the one who offered finds it
+     on the next snapshot. This is that second path, and it is the reason `rematchId`
+     had to join the stream's fingerprint.
+
+     On the transition, not on the state — the same rule as the result dialog, and for a
+     sharper reason. A finished game keeps its pointer forever, so redirecting whenever
+     one is *present* would make the old game unreachable: pressing back, or opening it
+     from your history to analyse it, would bounce you straight out again. So the jump
+     only happens when the pointer appears while you are watching. Arriving at a game
+     that already has a successor gets a link instead — see `StatusLine`. */
+  const router = useRouter();
+  const rematchId = snapshot?.rematchId ?? null;
+  const hasSnapshot = snapshot !== null;
+  const sawWithout = useRef(false);
+  useEffect(() => {
+    if (!hasSnapshot) return;
+    if (!rematchId) {
+      sawWithout.current = true;
+      return;
+    }
+    if (sawWithout.current) router.push(`/g/${rematchId}`);
+  }, [hasSnapshot, rematchId, router]);
 
   /* Opened on the transition, not on the state: coming back to a game you already
      saw the result of should not reopen the celebration. */
@@ -328,20 +355,27 @@ function StatusLine({
   rejection: string | null;
 }) {
   const snapshot = useOnline((state) => state.snapshot);
+  const phase = useRematchPhase(snapshot);
   const [busy, setBusy] = useState(false);
   if (!snapshot) return null;
 
   const act = async (action: string) => {
     setBusy(true);
-    await fetch(`/api/game/${gameId}/offer`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action }),
-    });
+    await sendOffer(gameId, action);
     setBusy(false);
   };
 
   if (snapshot.status === "finished") {
+    /* An offer being negotiated takes the whole line rather than sharing it with the
+       result. It is the only thing here waiting on a decision, and the result is
+       already spelled out in the dialog that opened over this. */
+    if (phase === "offered" || phase === "received") {
+      return (
+        <div className="flex h-9 shrink-0 items-center px-0.5">
+          <RematchControls snapshot={snapshot} phase={phase} className="w-full" />
+        </div>
+      );
+    }
     return (
       <div className="flex h-9 shrink-0 items-center gap-2 px-0.5">
         <p className="min-w-0 flex-1 truncate text-xs font-medium">
@@ -349,7 +383,17 @@ function StatusLine({
             ? `Draw by ${snapshot.ending}`
             : `${snapshot.winner === "white" ? "White" : "Black"} won by ${snapshot.ending}`}
         </p>
-        <Button asChild size="sm" variant="secondary" className="h-7 shrink-0 text-xs">
+        <RematchControls snapshot={snapshot} phase={phase} />
+        {/* This game already has a successor and you have come back to it deliberately.
+            A link rather than a redirect, so that coming back is possible at all. */}
+        {phase === "agreed" && snapshot.rematchId && (
+          <Button asChild size="sm" variant="secondary" className="h-7 shrink-0 text-xs">
+            <Link href={`/g/${snapshot.rematchId}`}>
+              <ArrowRight className="size-3.5" aria-hidden /> Rematch
+            </Link>
+          </Button>
+        )}
+        <Button asChild size="sm" variant="ghost" className="h-7 shrink-0 text-xs">
           <Link href={`/g/${gameId}/analyse`}>Analyse</Link>
         </Button>
         <Button asChild size="sm" variant="ghost" className="h-7 shrink-0 text-xs">
