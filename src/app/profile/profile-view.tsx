@@ -4,20 +4,23 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { BarChart3, Swords, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useGameHistory } from "@/lib/store/game-history-store";
 
 type Profile = {
   username: string;
   rating: { value: number; provisional: boolean };
   record: { games: number; wins: number; losses: number; draws: number };
+  history: { id: string; opponent: string; outcome: string; playedAt: string }[];
 };
 
 export function ProfileView() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [signedOut, setSignedOut] = useState(false);
+  const localGames = useGameHistory((state) => state.games);
 
   useEffect(() => {
     let active = true;
-    void fetch("/api/me", { cache: "no-store" }).then(async (response) => {
+    void fetch("/api/profile", { cache: "no-store" }).then(async (response) => {
       if (!active) return;
       if (response.status === 401) return setSignedOut(true);
       if (response.ok) setProfile(await response.json());
@@ -78,7 +81,23 @@ export function ProfileView() {
         <p className="tnum mt-3 text-3xl font-semibold">{rate}%</p>
         <p className="mt-1 font-serif text-sm text-muted-foreground">Across completed multiplayer games.</p>
       </section>
+      <History title="Multiplayer games" games={profile?.history ?? []} />
+      <History title="Games against Stockfish" games={localGames} />
     </main>
+  );
+}
+
+function History({ title, games }: { title: string; games: { id: string; opponent: string; outcome: string; playedAt: string }[] }) {
+  return (
+    <section className="mt-5 rounded-xl border bg-card p-5">
+      <h2 className="text-sm font-semibold">{title}</h2>
+      {games.length ? <ul className="mt-3 divide-y">{games.map((game) => (
+        <li key={game.id} className="flex items-center justify-between gap-3 py-2 text-sm">
+          <span className="min-w-0 truncate">{game.opponent}</span>
+          <span className="shrink-0 text-muted-foreground">{game.outcome} · {new Date(game.playedAt).toLocaleDateString()}</span>
+        </li>
+      ))}</ul> : <p className="mt-2 font-serif text-sm text-muted-foreground">No games yet.</p>}
+    </section>
   );
 }
 

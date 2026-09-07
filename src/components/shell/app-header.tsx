@@ -8,6 +8,7 @@ import {
   Dumbbell,
   ListOrdered,
   MoreHorizontal,
+  UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ import { PlayMenu } from "./play-menu";
    five icons you have to guess at.
    ─────────────────────────────────────────────────────────────────────────── */
 const SECONDARY = [
+  { href: "/profile", label: "Profile", Icon: UserRound },
   { href: "/review", label: "Review", Icon: ListOrdered },
   { href: "/practise", label: "Practise", Icon: Dumbbell },
   { href: "/concepts", label: "Concepts", Icon: BookOpen },

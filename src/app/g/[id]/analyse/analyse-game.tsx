@@ -47,13 +47,14 @@ export function AnalyseGame({ gameId }: { gameId: string }) {
 
       try {
         await analyseFinishedGame({
+          gameId,
           sans: snapshot.sans,
           playerColor: snapshot.seat === "white" ? "w" : "b",
           result: resultOf(snapshot),
           onProgress: (done, total) => setProgress({ done, total }),
           signal: controller.signal,
         });
-        if (!controller.signal.aborted) router.replace("/review");
+        if (!controller.signal.aborted) router.replace(`/g/${gameId}/review`);
       } catch (thrown) {
         setError(
           thrown instanceof Error ? thrown.message : "The engine could not be started.",
@@ -82,6 +83,9 @@ export function AnalyseGame({ gameId }: { gameId: string }) {
   }
 
   const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+  const status = progress.total
+    ? pct < 35 ? "Checking the opening and early choices." : pct < 75 ? "Finding tactical moments and better moves." : "Preparing your personalised review."
+    : "Starting the engine…";
 
   return (
     <main className="mx-auto grid w-full max-w-md flex-1 place-items-center px-4 py-16 text-center">
@@ -89,7 +93,7 @@ export function AnalyseGame({ gameId }: { gameId: string }) {
         <Cpu className="mx-auto size-7 animate-pulse text-primary" aria-hidden />
         <h1 className="mt-3 text-lg font-semibold">Working through the game</h1>
         <p className="mt-2 font-serif text-base leading-relaxed text-muted-foreground">
-          Finding the key moments and better choices for your moves.
+          {status}
         </p>
 
         <Progress value={pct} className="mt-6" />

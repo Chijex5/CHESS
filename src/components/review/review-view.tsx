@@ -52,7 +52,7 @@ function Panel({
   );
 }
 
-export function ReviewView() {
+export function ReviewView({ gameId }: { gameId?: string }) {
   const game = useGame();
   const analysis = useEngine((state) => state.analysis);
   const byPly = useCoach((state) => state.byPly);
@@ -60,6 +60,8 @@ export function ReviewView() {
   const [viewPly, setViewPly] = useState<number | null>(null);
   const [flipped, setFlipped] = useState(false);
   const [concept, setConcept] = useState<Concept | null>(null);
+
+  const unavailable = Boolean(gameId && game.reviewGameId !== gameId);
 
   const annotations = useMemo(() => sortedAnnotations(byPly), [byPly]);
   const rows = useMemo(
@@ -140,15 +142,18 @@ export function ReviewView() {
     URL.revokeObjectURL(url);
   };
 
-  if (total === 0) {
+  if (unavailable || total === 0) {
     return (
       <div className="mx-auto grid w-full max-w-lg flex-1 place-items-center px-4 py-16 text-center">
         <div>
           <Trophy className="mx-auto size-8 text-muted-foreground/40" aria-hidden />
-          <h1 className="mt-3 text-lg font-semibold">No game to review yet</h1>
+          <h1 className="mt-3 text-lg font-semibold">
+            {unavailable ? "This review is not available in this browser" : "No game to review yet"}
+          </h1>
           <p className="mt-2 font-serif text-base leading-relaxed text-muted-foreground">
-            Play a game and this page fills in: accuracy, the evaluation curve,
-            your biggest swings, and the themes the coach kept citing.
+            {unavailable
+              ? "Analyse this game again to create its review."
+              : "Play a game and this page fills in: accuracy, the evaluation curve, your biggest swings, and the themes the coach kept citing."}
           </p>
           <Button asChild className="mt-5">
             <Link href="/play">

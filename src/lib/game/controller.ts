@@ -700,6 +700,7 @@ export function evaluationAt(ply: number): Evaluation | null {
  * count.
  */
 export async function analyseFinishedGame(input: {
+  gameId: string;
   sans: string[];
   playerColor: PieceColor;
   result: GameResult;
@@ -707,7 +708,7 @@ export async function analyseFinishedGame(input: {
   onProgress?: (done: number, total: number) => void;
   signal?: AbortSignal;
 }): Promise<void> {
-  const { sans, playerColor, result, onProgress, signal } = input;
+  const { gameId, sans, playerColor, result, onProgress, signal } = input;
 
   for (const controller of coachAborts.values()) controller.abort();
   coachAborts = new Map();
@@ -747,7 +748,7 @@ export async function analyseFinishedGame(input: {
     useGame.getState().appendPly(record);
   }
 
-  useGame.getState().patch({ status: "over", result, viewPly: records.length });
+  useGame.getState().patch({ status: "over", result, viewPly: records.length, reviewGameId: gameId });
   syncPosition();
 
   await getAnalyst().init();
