@@ -3,6 +3,7 @@ import { and, eq, inArray, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { friendships, games, players } from "@/lib/db/schema";
 import { publicPlayer } from "./players";
+import { isHouse } from "./bot";
 import {
   friendshipState,
   pairKey,
@@ -50,7 +51,12 @@ export async function byUsername(username: string): Promise<Person | null> {
     .from(players)
     // Usernames are unique and stored as Clerk has them, so this is an exact match.
     .where(eq(players.username, username));
-  return row ? { id: row.clerkUserId, ...publicPlayer(row) } : null;
+  if (!row) return null;
+  /* The engine's house row is in this table because a game seat needs a foreign key, not
+     because it is somebody. Hidden here so it cannot be befriended or challenged — the
+     answer is the same as for a name nobody holds, which is what it is. */
+  if (isHouse(row.clerkUserId)) return null;
+  return { id: row.clerkUserId, ...publicPlayer(row) };
 }
 
 /** Everything the friends panel renders, in three queries. */

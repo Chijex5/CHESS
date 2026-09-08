@@ -5,6 +5,13 @@ import { games, messages, moves, offers, players, type Game } from "@/lib/db/sch
 import { applyGame, type Rating } from "@/lib/game/rating";
 import { publishChange } from "@/lib/realtime/bus";
 import { archiveFinished } from "./archive";
+import {
+  HOUSE_ID,
+  HOUSE_USERNAME,
+  botDisplayName,
+  housePlayer,
+  isHouse,
+} from "./bot";
 import { gameId as newGameId } from "./ids";
 import { publicPlayer } from "./players";
 import {
@@ -84,10 +91,34 @@ export async function createPairedGame(options: {
   return id;
 }
 
-const BOT_NAMES = ["RiverKnight", "QuietBishop", "SilverPawn", "NorthStar", "AmberRook"];
+/** Creates the engine's one shared row, if it is not already there. Done on the fallback
+ *  path rather than seeded by a migration, so a fresh database needs no extra step. */
+async function ensureHousePlayer(): Promise<void> {
+  await db
+    .insert(players)
+    .values({
+      clerkUserId: HOUSE_ID,
+      username: HOUSE_USERNAME,
+      /* Never read — `housePlayer` takes the rating from the game — but a row has to have
+         one, and 1500 is the unrated default rather than a claim. */
+      rating: 1500,
+      rd: 350,
+      volatility: 0.06,
+    })
+    .onConflictDoNothing({ target: players.clerkUserId });
+}
 
-/** Creates a per-game, human-looking opponent. It is intentionally unrated: an
- * invented identity must never move a real player's competitive rating. */
+/**
+ * Creates a game against the engine, wearing a human-looking name.
+ *
+ * The seat is the one house account; the name the player sees is a column on this game.
+ * It used to be a fresh `players` row per game with the name as its username, which
+ * `players.username` being UNIQUE made a collision waiting to happen — see `bot.ts` for
+ * the three ways that went wrong.
+ *
+ * Unrated, and that is not incidental: an invented opponent must never move a real
+ * player's rating. `finish` already declines to apply ratings to an unrated game.
+ */
 export async function createEngineFallbackGame(options: {
   playerId: string;
   rating: number;
@@ -95,25 +126,26 @@ export async function createEngineFallbackGame(options: {
   incrementMs: number;
 }): Promise<string> {
   const id = newGameId();
-  const engineElo = Math.max(1320, Math.min(3190, Math.round(options.rating + (Math.floor(Math.random() * 41) - 20))));
-  const botId = `engine:${id}`;
-  const username = `${BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)]}${Math.floor(100 + Math.random() * 900)}`;
-  await db.insert(players).values({
-    clerkUserId: botId,
-    username,
-    rating: engineElo,
-    rd: 80,
-    volatility: 0.06,
-  });
+  /* Within twenty points of the player, clamped to what the engine can actually be set
+     to. A fallback that is obviously weaker or obviously stronger reads as a consolation
+     prize rather than a game. */
+  const engineElo = Math.max(
+    1320,
+    Math.min(3190, Math.round(options.rating + (Math.floor(Math.random() * 41) - 20))),
+  );
+
+  await ensureHousePlayer();
+
   const humanWhite = Math.random() < 0.5;
   await db.insert(games).values({
     id,
-    whiteId: humanWhite ? options.playerId : botId,
-    blackId: humanWhite ? botId : options.playerId,
+    whiteId: humanWhite ? options.playerId : HOUSE_ID,
+    blackId: humanWhite ? HOUSE_ID : options.playerId,
     initialMs: options.initialMs,
     incrementMs: options.incrementMs,
     rated: 0,
     engineElo,
+    botName: botDisplayName(),
     status: "active",
     startedAt: new Date(),
   });
@@ -240,9 +272,12 @@ export async function snapshot(id: string, userId: string | null): Promise<GameS
      the arithmetic itself. Sending both would mean projecting twice. */
   const banked = remaining(clock, last);
 
+  /* The house seat is drawn from this game rather than looked up: one row is shared by
+     every fallback game, so its username and rating say nothing about this one. The
+     name is on the game and the strength is `engineElo`. */
   const [white, black, offer, chatSeq] = await Promise.all([
-    game.whiteId ? playerRow(game.whiteId) : null,
-    game.blackId ? playerRow(game.blackId) : null,
+    isHouse(game.whiteId) ? housePlayer(game) : game.whiteId ? playerRow(game.whiteId) : null,
+    isHouse(game.blackId) ? housePlayer(game) : game.blackId ? playerRow(game.blackId) : null,
     openOffer(id),
     lastMessageId(id),
   ]);
@@ -425,10 +460,12 @@ export async function submitEngineMove(
   if (!game || game.engineElo === null) {
     return { ok: false, reason: "not-an-engine-game", status: 404 };
   }
-  const botId = game.whiteId?.startsWith("engine:") ? game.whiteId : game.blackId;
-  const humanId = botId === game.whiteId ? game.blackId : game.whiteId;
-  if (!botId || humanId !== userId) return { ok: false, reason: "not-a-player", status: 403 };
-  return submitMove(id, botId, request);
+  const botSeat = isHouse(game.whiteId) ? "white" : isHouse(game.blackId) ? "black" : null;
+  if (!botSeat) return { ok: false, reason: "not-an-engine-game", status: 404 };
+  const humanId = botSeat === "white" ? game.blackId : game.whiteId;
+  // Only the human in this game may advance it, and only ever the other seat.
+  if (humanId !== userId) return { ok: false, reason: "not-a-player", status: 403 };
+  return submitMove(id, HOUSE_ID, request);
 }
 
 /**

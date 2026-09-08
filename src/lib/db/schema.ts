@@ -100,6 +100,10 @@ export const games = pgTable(
      * the online board and archive shape. Its strength is game metadata, not
      * a rating result against a fabricated account. */
     engineElo: integer("engine_elo"),
+    /** The human-looking name shown for an engine fallback opponent. Display text, and
+     *  deliberately *not* unique: it used to be a `players.username`, which is, and two
+     *  games rolling the same name threw on the insert. Nothing is keyed on this. */
+    botName: text("bot_name"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     startedAt: timestamp("started_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),

@@ -26,15 +26,28 @@ export async function ensurePlayer(): Promise<{
   const username = user.username;
   if (!username) return null;
 
-  const [row] = await db
-    .insert(players)
-    .values({ clerkUserId: user.id, username })
-    .onConflictDoUpdate({
-      target: players.clerkUserId,
-      // Keeps the denormalised copy honest if they rename themselves in Clerk.
-      set: { username, lastSeenAt: new Date() },
-    })
-    .returning();
+  /* The conflict target is the primary key, so a *username* collision is not handled by
+     it and throws. Clerk guarantees usernames are unique among its own users, so the only
+     way to reach that is a person holding a name this table also uses — which today means
+     the engine's house account, and which is why that name is occupied by a real Clerk
+     user rather than merely hoped about (`bot.ts`). The catch is here because the failure
+     it prevents is a 500 on every online route for one account, permanently, with nothing
+     the person could do about it. */
+  let row;
+  try {
+    [row] = await db
+      .insert(players)
+      .values({ clerkUserId: user.id, username })
+      .onConflictDoUpdate({
+        target: players.clerkUserId,
+        // Keeps the denormalised copy honest if they rename themselves in Clerk.
+        set: { username, lastSeenAt: new Date() },
+      })
+      .returning();
+  } catch {
+    return null;
+  }
+  if (!row) return null;
 
   return {
     id: row.clerkUserId,
