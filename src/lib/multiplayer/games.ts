@@ -1,9 +1,10 @@
 import "server-only";
 import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { games, moves, offers, players, type Game } from "@/lib/db/schema";
+import { games, messages, moves, offers, players, type Game } from "@/lib/db/schema";
 import { applyGame, type Rating } from "@/lib/game/rating";
 import { publishChange } from "@/lib/realtime/bus";
+import { archiveFinished } from "./archive";
 import { gameId as newGameId } from "./ids";
 import { publicPlayer } from "./players";
 import {
@@ -39,6 +40,10 @@ export type CreateOptions = {
   initialMs: number;
   incrementMs: number;
   rated: boolean;
+  /** Addressed to one person: only they can take the other seat. A challenge rather
+   *  than a link, which is the difference between "here is a game" and "I am asking
+   *  you". */
+  invitedId?: string | null;
 };
 
 /**
@@ -88,6 +93,7 @@ export async function createGame(options: CreateOptions): Promise<string> {
     initialMs: options.initialMs,
     incrementMs: options.incrementMs,
     rated: options.rated ? 1 : 0,
+    invitedId: options.invitedId ?? null,
     status: "pending",
   });
   return id;
@@ -112,6 +118,10 @@ export async function joinGame(
       ? { seat: game.whiteId === userId ? "white" : "black", startedAt: game.startedAt }
       : null;
   }
+  /* A challenge names its opponent, so anybody else following the link is a spectator
+     of an empty board rather than a player. Checked here rather than in the route
+     because this is the only function that seats anyone. */
+  if (game.invitedId && game.invitedId !== userId) return null;
 
   const seat: Seat = game.whiteId === null ? "white" : "black";
   const startedAt = new Date();
@@ -186,10 +196,11 @@ export async function snapshot(id: string, userId: string | null): Promise<GameS
      the arithmetic itself. Sending both would mean projecting twice. */
   const banked = remaining(clock, last);
 
-  const [white, black, offer] = await Promise.all([
+  const [white, black, offer, chatSeq] = await Promise.all([
     game.whiteId ? playerRow(game.whiteId) : null,
     game.blackId ? playerRow(game.blackId) : null,
     openOffer(id),
+    lastMessageId(id),
   ]);
 
   return {
@@ -217,6 +228,7 @@ export async function snapshot(id: string, userId: string | null): Promise<GameS
     offer,
     endedAt: game.endedAt?.getTime() ?? null,
     rematchId: game.rematchId,
+    chatSeq,
     rated: game.rated === 1,
     ratings:
       game.whiteRatingAfter !== null && game.blackRatingAfter !== null
@@ -258,6 +270,17 @@ async function settleFlag(game: NonNullable<Awaited<ReturnType<typeof gameRow>>>
 async function playerRow(id: string) {
   const [row] = await db.select().from(players).where(eq(players.clerkUserId, id));
   return row ? publicPlayer(row) : null;
+}
+
+/** The chat cursor. One indexed lookup, so it costs a snapshot nothing. */
+async function lastMessageId(id: string): Promise<number> {
+  const [row] = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(eq(messages.gameId, id))
+    .orderBy(desc(messages.id))
+    .limit(1);
+  return row?.id ?? 0;
 }
 
 async function openOffer(id: string) {
@@ -384,6 +407,12 @@ export async function finish(
         .where(eq(games.id, id));
     }
   }
+
+  /* After the ratings, so the archived row can say what the opponent was rated when
+     you played them rather than what the game left them on. Awaited rather than fired
+     and forgotten: on a serverless function the request may be frozen the moment this
+     one returns, and a dropped write here is a game missing from a history page. */
+  await archiveFinished(closed, winner, ending, ratings);
 
   await publishChange(id, -1);
   return { ratings };

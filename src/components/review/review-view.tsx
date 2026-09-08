@@ -1,8 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Download, Dumbbell, FlipVertical2, Play, RotateCcw, Trophy } from "lucide-react";
+import {
+  Download,
+  Dumbbell,
+  FlipVertical2,
+  Loader2,
+  Play,
+  RotateCcw,
+  Sparkles,
+  Trophy,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ChessBoard } from "@/components/board/chess-board";
@@ -22,6 +31,8 @@ import { sortedAnnotations, useCoach } from "@/lib/store/coach-store";
 import { useSettings } from "@/lib/store/settings-store";
 import { toMoveRows } from "@/lib/game/rows";
 import { gameStats } from "@/lib/game/stats";
+import { archive, isRestorable } from "@/lib/archive";
+import { restoreReview } from "@/lib/archive/working-set";
 import { opponentFor } from "@/lib/engine/opponents";
 import { plainProse } from "@/components/coach/coach-prose";
 import { splitUci, toPgn } from "@/lib/game/notation";
@@ -61,7 +72,38 @@ export function ReviewView({ gameId }: { gameId?: string }) {
   const [flipped, setFlipped] = useState(false);
   const [concept, setConcept] = useState<Concept | null>(null);
 
-  const unavailable = Boolean(gameId && game.reviewGameId !== gameId);
+  /* The three stores hold one game at a time, so a review for a game that is not the
+     loaded one used to be a dead end — "not available in this browser", with no way
+     forward but re-running the engine. Now it is a load: the archive has the analysis,
+     and putting it back is a fetch rather than eighty searches.
+
+     Three states, because the middle one is visible: `null` while looking, `true` once
+     the game is in the stores, `false` when the archive has never seen it. */
+  const wanted = gameId && game.reviewGameId !== gameId ? gameId : null;
+  /* Tagged with the id it answers. Navigating from one game's review to another's
+     otherwise shows the previous answer for a beat, which for a `false` means claiming
+     the new game has never been analysed. */
+  const [outcome, setOutcome] = useState<{ id: string; found: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!wanted) return;
+    let live = true;
+    void (async () => {
+      const store = await archive();
+      const stored = await store.review(wanted);
+      if (!live) return;
+      if (isRestorable(stored)) restoreReview(wanted, stored);
+      setOutcome({ id: wanted, found: isRestorable(stored) });
+    })();
+    return () => {
+      live = false;
+    };
+  }, [wanted]);
+
+  /* A successful restore sets `reviewGameId`, so `wanted` goes null and this is true
+     from the store rather than from the outcome — one source for "is it loaded". */
+  const restored = wanted ? (outcome?.id === wanted ? outcome.found : null) : true;
+  const unavailable = restored === false;
 
   const annotations = useMemo(() => sortedAnnotations(byPly), [byPly]);
   const rows = useMemo(
@@ -142,23 +184,41 @@ export function ReviewView({ gameId }: { gameId?: string }) {
     URL.revokeObjectURL(url);
   };
 
+  // Looking it up. Brief, but a flash of "no game to review" would be a wrong answer.
+  if (restored === null) {
+    return (
+      <div className="grid flex-1 place-items-center px-4 py-16">
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+          Opening the review…
+        </p>
+      </div>
+    );
+  }
+
   if (unavailable || total === 0) {
     return (
       <div className="mx-auto grid w-full max-w-lg flex-1 place-items-center px-4 py-16 text-center">
         <div>
           <Trophy className="mx-auto size-8 text-muted-foreground/40" aria-hidden />
           <h1 className="mt-3 text-lg font-semibold">
-            {unavailable ? "This review is not available in this browser" : "No game to review yet"}
+            {unavailable ? "This game has not been analysed yet" : "No game to review yet"}
           </h1>
           <p className="mt-2 font-serif text-base leading-relaxed text-muted-foreground">
             {unavailable
-              ? "Analyse this game again to create its review."
+              ? "Nothing has run the engine over it. That takes a minute and then it is kept."
               : "Play a game and this page fills in: accuracy, the evaluation curve, your biggest swings, and the themes the coach kept citing."}
           </p>
           <Button asChild className="mt-5">
-            <Link href="/play">
-              <Play className="size-4" aria-hidden /> Play a game
-            </Link>
+            {unavailable && gameId ? (
+              <Link href={`/g/${gameId}/analyse`}>
+                <Sparkles className="size-4" aria-hidden /> Analyse this game
+              </Link>
+            ) : (
+              <Link href="/play">
+                <Play className="size-4" aria-hidden /> Play a game
+              </Link>
+            )}
           </Button>
         </div>
       </div>

@@ -32,6 +32,7 @@ function finished(overrides: Partial<GameSnapshot> = {}): GameSnapshot {
     offer: null,
     endedAt: T - 5_000,
     rematchId: null,
+    chatSeq: 0,
     rated: false,
     ratings: null,
     ...overrides,

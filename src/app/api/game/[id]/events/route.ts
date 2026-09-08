@@ -43,6 +43,8 @@ function fingerprintOf(state: GameSnapshot): string {
        the page, so a snapshot that omitted it would strand the player who offered on a
        finished board while their opponent sat waiting in the new game. */
     state.rematchId ?? "",
+    // A message is a change a client renders, so it is a change the stream must push.
+    state.chatSeq,
     /* Ratings land a moment after the result, in a second write. Without them here the
        dialog would show "working out the new ratings…" until something else changed —
        which, the game being over, is never. */

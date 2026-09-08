@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Show, UserButton, useUser } from "@clerk/nextjs";
+import { Show, UserButton, useAuth, useUser } from "@clerk/nextjs";
 import { LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { setArchiveSignedIn } from "@/lib/archive";
+import { importLocalGames } from "@/lib/archive/import-local";
 
 /* An account is optional, and the header has to say so: signed out you get a way
    in rather than a wall.
@@ -14,25 +16,48 @@ import { Button } from "@/components/ui/button";
    sound and theme buttons beside it shuffle sideways once auth lands. */
 export function AccountButton() {
   return (
-    <span className="flex min-h-8 min-w-8 shrink-0 items-center justify-end gap-1.5">
-      <Show
-        when="signed-in"
-        fallback={
-          <Button asChild size="sm" variant="ghost" className="h-8 px-2 text-xs">
-            <Link href="/sign-in">
-              <LogIn className="size-3.5" aria-hidden />
-              <span className="max-sm:sr-only">Sign in</span>
-            </Link>
-          </Button>
-        }
-      >
-        <Handle />
-        {/* Clerk's default avatar is 28px and sits a pixel proud of the 32px icon
-            buttons it stands next to. */}
-        <UserButton appearance={{ elements: { userButtonAvatarBox: "size-7" } }} />
-      </Show>
-    </span>
+    <>
+      <ArchiveIdentity />
+      <span className="flex min-h-8 min-w-8 shrink-0 items-center justify-end gap-1.5">
+        <Show
+          when="signed-in"
+          fallback={
+            <Button asChild size="sm" variant="ghost" className="h-8 px-2 text-xs">
+              <Link href="/sign-in">
+                <LogIn className="size-3.5" aria-hidden />
+                <span className="max-sm:sr-only">Sign in</span>
+              </Link>
+            </Button>
+          }
+        >
+          <Handle />
+          {/* Clerk's default avatar is 28px and sits a pixel proud of the 32px icon
+              buttons it stands next to. */}
+          <UserButton appearance={{ elements: { userButtonAvatarBox: "size-7" } }} />
+        </Show>
+      </span>
+    </>
   );
+}
+
+/* Tells the archive which backend to use. It lives here because the header is on every
+   page, and it renders nothing.
+
+   The archive needs one fact React knows and it does not: whether there is a session. A
+   game can end in `controller.ts`, which is not a component and cannot read a hook, so
+   the fact is pushed to a module rather than pulled from one. Without this the archive
+   falls back to asking `/api/me`, which is correct but a round trip slower. */
+function ArchiveIdentity() {
+  const { isLoaded, isSignedIn } = useAuth();
+  useEffect(() => {
+    if (!isLoaded) return;
+    setArchiveSignedIn(Boolean(isSignedIn));
+    /* Games played on this device before there was an account follow the player into
+       it, once. Fired and not awaited: it is a background upload, and nothing on the
+       page depends on it having finished. */
+    if (isSignedIn) void importLocalGames();
+  }, [isLoaded, isSignedIn]);
+  return null;
 }
 
 /* The handle and the rating, beside the avatar. Usernames are required on this

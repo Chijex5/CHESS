@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { fetchSnapshot } from "@/lib/multiplayer/client";
 import { analyseFinishedGame } from "@/lib/game/controller";
+import { archive, isRestorable } from "@/lib/archive";
+import { restoreReview, saveFinishedGame } from "@/lib/archive/working-set";
 import type { GameResult } from "@/lib/chess/types";
 import type { GameSnapshot } from "@/lib/multiplayer/protocol";
 
@@ -45,6 +47,17 @@ export function AnalyseGame({ gameId }: { gameId: string }) {
         return;
       }
 
+      /* Already analysed once, on this device or another: the stored review restores in
+         a round trip where re-running the engine would take the better part of a minute
+         and land on the same numbers. */
+      const store = await archive();
+      const stored = await store.review(gameId);
+      if (isRestorable(stored)) {
+        restoreReview(gameId, stored);
+        if (!controller.signal.aborted) router.replace(`/g/${gameId}/review`);
+        return;
+      }
+
       try {
         await analyseFinishedGame({
           gameId,
@@ -54,7 +67,27 @@ export function AnalyseGame({ gameId }: { gameId: string }) {
           onProgress: (done, total) => setProgress({ done, total }),
           signal: controller.signal,
         });
-        if (!controller.signal.aborted) router.replace(`/g/${gameId}/review`);
+        if (controller.signal.aborted) return;
+
+        /* The server filed the result when the game ended, knowing nothing about how
+           well either side played. This is the other half of that row: the accuracy, the
+           quality tally, the weaknesses, and the analysis itself, so that opening this
+           review again — here or on another device — costs a fetch rather than eighty
+           searches. */
+        const opponent = snapshot.seat === "white" ? snapshot.black : snapshot.white;
+        await saveFinishedGame({
+          id: gameId,
+          source: "online",
+          opponent: opponent?.username ?? "Unknown",
+          opponentRating: opponent?.rating ?? null,
+          ending: snapshot.ending,
+          initialMs: snapshot.initialMs,
+          incrementMs: snapshot.incrementMs,
+          rated: snapshot.rated,
+          playedAt: snapshot.endedAt ?? Date.now(),
+        });
+
+        router.replace(`/g/${gameId}/review`);
       } catch (thrown) {
         setError(
           thrown instanceof Error ? thrown.message : "The engine could not be started.",
@@ -121,6 +154,7 @@ function resultOf(snapshot: GameSnapshot): GameResult {
       ? `${snapshot.ending ?? "game over"} · against ${opponent.username}`
       : (snapshot.ending ?? "game over"),
     playerWon: won,
+    ending: snapshot.ending ?? undefined,
     playerName: player?.username,
     opponentName: opponent?.username,
   };
