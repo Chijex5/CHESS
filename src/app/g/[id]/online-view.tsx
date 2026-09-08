@@ -3,7 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Flag, Handshake, Loader2, LogIn, Swords, X } from "lucide-react";
+import {
+  ArrowRight,
+  Flag,
+  Handshake,
+  ListOrdered,
+  Loader2,
+  LogIn,
+  Swords,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ChessBoard } from "@/components/board/chess-board";
@@ -13,6 +22,7 @@ import { OnlineOverDialog } from "@/components/game/online-over-dialog";
 import { RematchControls } from "@/components/game/rematch-controls";
 import { InvitePanel } from "./invite-panel";
 import { MoveList } from "@/components/game/move-list";
+import { ChatPanel, ChatTabLabel, MobileChat } from "@/components/game/chat-panel";
 import { useOnline } from "@/lib/store/online-store";
 import { connect, joinGame, sendOffer } from "@/lib/multiplayer/client";
 import {
@@ -48,6 +58,7 @@ export function OnlineView({ gameId }: { gameId: string }) {
   const [selected, setSelected] = useState<Square | null>(null);
   const [promotion, setPromotion] = useState<{ from: Square; to: Square } | null>(null);
   const [needsAuth, setNeedsAuth] = useState(false);
+  const [rail, setRail] = useState<"moves" | "chat">("moves");
   /* Whether the seat-claiming POST has been sent, held in a ref rather than state:
      nothing renders differently for it, and as state it would make the effect below
      set state synchronously and cascade a render. */
@@ -275,23 +286,53 @@ export function OnlineView({ gameId }: { gameId: string }) {
           </div>
         </main>
 
+        {/* One rail, two tabs — the same pattern the engine game's `SideRail` uses, for
+            the same reason: the board gets the column back, and there is one place to
+            look rather than two. The engine version tabs the coach against the notation;
+            here there is no coach, and the other person is the thing worth switching to. */}
         <aside className="hidden min-h-0 flex-col rounded-xl border bg-sidebar lg:flex">
-          <div className="flex shrink-0 items-center justify-between border-b px-3 py-2">
-            <h2 className="text-sm font-semibold">Moves</h2>
-            <span className="tnum font-mono text-2xs text-muted-foreground">
-              {Math.ceil(snapshot.seq / 2)}
-            </span>
+          <div
+            role="tablist"
+            aria-label="Moves and chat"
+            className="flex shrink-0 items-center gap-1 border-b px-2 py-1.5"
+          >
+            <RailTab
+              current={rail === "moves"}
+              onClick={() => setRail("moves")}
+              id="rail-moves"
+            >
+              <ListOrdered className="size-3.5" aria-hidden />
+              Moves
+              <span className="tnum ms-0.5 font-mono text-2xs text-muted-foreground">
+                {Math.ceil(snapshot.seq / 2)}
+              </span>
+            </RailTab>
+            <RailTab
+              current={rail === "chat"}
+              onClick={() => {
+                setRail("chat");
+                useOnline.getState().markChatRead();
+              }}
+              id="rail-chat"
+            >
+              <ChatTabLabel />
+            </RailTab>
           </div>
+
           <div className="relative min-h-0 flex-1">
-            <div className="absolute inset-0">
-              {rows.length === 0 ? (
-                <p className="p-3 font-serif text-sm text-muted-foreground">
-                  No moves yet.
-                </p>
-              ) : (
-                <MoveList rows={rows} activePly={snapshot.seq} />
-              )}
-            </div>
+            {rail === "moves" ? (
+              <div className="absolute inset-0">
+                {rows.length === 0 ? (
+                  <p className="p-3 font-serif text-sm text-muted-foreground">
+                    No moves yet.
+                  </p>
+                ) : (
+                  <MoveList rows={rows} activePly={snapshot.seq} />
+                )}
+              </div>
+            ) : (
+              <ChatPanel gameId={gameId} className="absolute inset-0" />
+            )}
           </div>
         </aside>
       </div>
@@ -304,6 +345,38 @@ export function OnlineView({ gameId }: { gameId: string }) {
         />
       )}
     </div>
+  );
+}
+
+/** A rail tab. Lifted from `SideRail`'s pattern rather than imported, because that one
+ *  is wired to the coach panel and an online game has no coach. */
+function RailTab({
+  current,
+  onClick,
+  id,
+  children,
+}: {
+  current: boolean;
+  onClick: () => void;
+  id: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      id={id}
+      aria-selected={current}
+      onClick={onClick}
+      className={cn(
+        "flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors",
+        current
+          ? "bg-accent text-accent-foreground"
+          : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -454,6 +527,7 @@ function StatusLine({
               ? "Draw offered. Waiting for an answer."
               : "")}
       </p>
+      {snapshot.seat && <MobileChat gameId={gameId} />}
       {snapshot.status === "active" && snapshot.seat && (
         <>
           <Button

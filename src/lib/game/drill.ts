@@ -7,6 +7,11 @@ import type { Annotation, Evaluation, Square } from "@/lib/chess/types";
 
 /** One position to solve: the board as it stood before a move you got wrong. */
 export type Drill = {
+  /** Which game this came from. Empty for the game currently loaded in the stores,
+   *  which is the only one that needs no identifying. */
+  gameId: string;
+  /** Stable across games, unlike `ply` — two games both have a fourteenth move. */
+  key: string;
   ply: number;
   moveNumber: number;
   fen: string;
@@ -22,10 +27,12 @@ export type Drill = {
 
 /* Worst first. A session you abandon after two positions should have spent them on
    the two moves that actually cost you the game. */
-export function drillsFrom(annotations: Annotation[]): Drill[] {
+export function drillsFrom(annotations: Annotation[], gameId = ""): Drill[] {
   return annotations
     .filter((a) => a.quality !== "best" && a.quality !== "brilliant")
     .map((a) => ({
+      gameId,
+      key: `${gameId}:${a.ply}`,
       ply: a.ply,
       moveNumber: a.moveNumber,
       fen: a.fenBefore,
@@ -92,4 +99,30 @@ export async function judgeAttempt(
   return rounded <= TOLERANCE
     ? { kind: "good", san: move.san, lostPct: rounded }
     : { kind: "worse", san: move.san, lostPct: rounded };
+}
+
+/**
+ * Drills from several games at once — the point of keeping them.
+ *
+ * Still worst first, and still worst *overall* rather than round-robin across games: a
+ * session that ends after three positions should have spent them on the three worst
+ * moves you have played, wherever they happened. Deduplicated by position, because
+ * playing the same losing move in two games is one thing to learn, not two.
+ */
+export function drillsFromMany(
+  sources: { gameId: string; annotations: Annotation[] }[],
+): Drill[] {
+  const seen = new Set<string>();
+  const all: Drill[] = [];
+  for (const source of sources) {
+    for (const drill of drillsFrom(source.annotations, source.gameId)) {
+      // The FEN *and* the move: the same position reached twice and answered differently
+      // is two different mistakes.
+      const fingerprint = `${drill.fen}|${drill.playedSan}`;
+      if (seen.has(fingerprint)) continue;
+      seen.add(fingerprint);
+      all.push(drill);
+    }
+  }
+  return all.sort((a, b) => b.lostPct - a.lostPct);
 }

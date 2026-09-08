@@ -1,6 +1,7 @@
 "use client";
 
 import { create } from "zustand";
+import type { ChatLine } from "@/lib/multiplayer/chat";
 import type { GameSnapshot, Seat } from "@/lib/multiplayer/protocol";
 
 /* ── The online game, client side ─────────────────────────────────────────────
@@ -41,6 +42,16 @@ type OnlineState = {
   /** Recent round trips, newest last. Kept rather than averaged because the useful
    *  statistic is the minimum — see `rttMs`. */
   rttSamples: number[];
+  /** The conversation so far, oldest first. Accumulated rather than re-sent: the
+   *  snapshot carries only the last message's id, and the client fetches the difference
+   *  between that and what it already holds. */
+  chat: ChatLine[];
+  /** Whether the opponent has been muted for this game. Local, and deliberately never
+   *  told to them — a mute they can detect is a mute that starts an argument. */
+  muted: boolean;
+  /** Messages that have arrived since the panel was last looked at. */
+  unread: number;
+
   /** Best recent round trip in ms, or null before anything has been measured.
    *
    *  The *minimum* of the window, not the mean. A single sample can include a cold
@@ -62,6 +73,10 @@ type OnlineActions = {
   observeRtt: (ms: number) => void;
   setPending: (pending: OnlineState["pending"]) => void;
   reject: (reason: string | null) => void;
+  /** Appends whatever the delta fetch returned, ignoring anything already held. */
+  addChat: (lines: ChatLine[]) => void;
+  setMuted: (muted: boolean) => void;
+  markChatRead: () => void;
   close: () => void;
 };
 
@@ -76,6 +91,9 @@ const empty: OnlineState = {
   justStarted: false,
   lastBeatAt: 0,
   warmed: false,
+  chat: [],
+  muted: false,
+  unread: 0,
   rttSamples: [],
   rttMs: null,
 };
@@ -118,6 +136,25 @@ export const useOnline = create<OnlineState & OnlineActions>()((set) => ({
     }),
   setPending: (pending) => set({ pending }),
   reject: (rejection) => set({ rejection }),
+  addChat: (lines) =>
+    set((state) => {
+      /* Deduplicated by id rather than trusted to be new. The cursor makes a repeat
+         unlikely, but a reconnect that refetches from zero would otherwise double the
+         whole conversation. */
+      const seen = new Set(state.chat.map((line) => line.id));
+      const fresh = lines.filter((line) => !seen.has(line.id));
+      if (fresh.length === 0) return state;
+      return {
+        chat: [...state.chat, ...fresh].sort((a, b) => a.id - b.id),
+        /* Your own messages are not unread, and a muted opponent's are not either — the
+           badge is a reason to open the panel, and neither of those is one. */
+        unread:
+          state.unread +
+          fresh.filter((line) => line.seat !== state.seat && !state.muted).length,
+      };
+    }),
+  setMuted: (muted) => set({ muted }),
+  markChatRead: () => set({ unread: 0 }),
   close: () => set({ ...empty }),
 }));
 

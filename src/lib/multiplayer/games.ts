@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, desc, eq, isNull, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { games, moves, offers, players, type Game } from "@/lib/db/schema";
+import { games, messages, moves, offers, players, type Game } from "@/lib/db/schema";
 import { applyGame, type Rating } from "@/lib/game/rating";
 import { publishChange } from "@/lib/realtime/bus";
 import { archiveFinished } from "./archive";
@@ -196,10 +196,11 @@ export async function snapshot(id: string, userId: string | null): Promise<GameS
      the arithmetic itself. Sending both would mean projecting twice. */
   const banked = remaining(clock, last);
 
-  const [white, black, offer] = await Promise.all([
+  const [white, black, offer, chatSeq] = await Promise.all([
     game.whiteId ? playerRow(game.whiteId) : null,
     game.blackId ? playerRow(game.blackId) : null,
     openOffer(id),
+    lastMessageId(id),
   ]);
 
   return {
@@ -227,6 +228,7 @@ export async function snapshot(id: string, userId: string | null): Promise<GameS
     offer,
     endedAt: game.endedAt?.getTime() ?? null,
     rematchId: game.rematchId,
+    chatSeq,
     rated: game.rated === 1,
     ratings:
       game.whiteRatingAfter !== null && game.blackRatingAfter !== null
@@ -268,6 +270,17 @@ async function settleFlag(game: NonNullable<Awaited<ReturnType<typeof gameRow>>>
 async function playerRow(id: string) {
   const [row] = await db.select().from(players).where(eq(players.clerkUserId, id));
   return row ? publicPlayer(row) : null;
+}
+
+/** The chat cursor. One indexed lookup, so it costs a snapshot nothing. */
+async function lastMessageId(id: string): Promise<number> {
+  const [row] = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(eq(messages.gameId, id))
+    .orderBy(desc(messages.id))
+    .limit(1);
+  return row?.id ?? 0;
 }
 
 async function openOffer(id: string) {

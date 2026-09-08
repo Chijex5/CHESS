@@ -57,6 +57,11 @@ export type GameSnapshot = {
   /** The game both players agreed to move to. Set once, when a rematch is accepted,
    *  and the only thing either client needs in order to arrive there together. */
   rematchId: string | null;
+  /** Id of the last chat message, or 0. A cursor rather than the messages themselves:
+   *  the stream is a doorbell, and putting the last twenty lines in every snapshot
+   *  would ride a few kilobytes of conversation along with every *move*. A client whose
+   *  cursor is behind fetches the difference. */
+  chatSeq: number;
   rated: boolean;
   /** Present once a rated game has finished and ratings have been applied. */
   ratings: Record<Seat, { before: number; after: number }> | null;

@@ -82,6 +82,37 @@ mirror it reconciles rather than a source of truth.
 - **A rematch is a pointer on the finished game.** Colours swap, the time control and
   the rated flag are inherited, and it is offerable for two minutes — for exactly as
   long as the event stream that would carry the answer stays open.
+- **Friends are one row per pair**, keyed on the two ids in sorted order, so asking
+  somebody who has already asked you *is* accepting them and a duplicate is impossible
+  rather than merely checked for. A challenge is a pending game with their name on it:
+  no notification to expire, and it is still there when they next look.
+- **Chat has no moderator, so the controls belong to you.** Mute is local and block is
+  mutual, and neither is announced — a mute the other player can detect is a mute that
+  starts an argument. The server only caps length and rate. There is no report queue,
+  because there is nobody to read it and a button that does nothing is worse than none.
+
+## What the games add up to
+
+Every finished game is filed with its analysis attached, which is what makes accuracy
+a trend rather than a fact about the last game you played.
+
+- **One archive, two backends, never both.** Postgres when you are signed in,
+  IndexedDB when you are not — a merge would mean deciding which is right whenever
+  they disagreed. IndexedDB rather than `localStorage` because a stored review is tens
+  of kilobytes and fifty of them overrun the quota, from a synchronous write that
+  zustand's persist middleware swallows.
+- **Summaries and analyses are separate tables**, because a statistics page scans every
+  summary you own and wants a review one at a time.
+- **`null` accuracy means "not analysed"**, which is a real state: the server files an
+  online game's result the moment it ends, when nothing has been searched yet. Those
+  games count towards your record and towards no average.
+- **The most useful statistic is which ideas keep costing you games** — concept slugs
+  the coach cited against your own mistakes, ranked by how many separate games they
+  turned up in, because three games with one loose piece each is a habit and one game
+  with four is a bad afternoon.
+- **Charts are single-hue and directly labelled.** Fed to a palette validator the
+  move-quality ramp fails adjacent separation — `best` and `good` are 4.5 ΔE apart to
+  normal vision — which is fine on badges that also carry a glyph and wrong in a chart.
 
 ## Layout
 
@@ -94,7 +125,9 @@ src/lib/game/       the live game (mutable chess.js at module scope), plus
 src/lib/coach/      prompts, retrieval, the concept corpus
 src/lib/store/      zustand: game, engine, coach, hint, clock, settings,
                     online (not persisted — an online game lives on the server)
-src/lib/multiplayer/  server rules, the wire protocol, the online controller
+src/lib/multiplayer/  server rules, the wire protocol, friends, chat, the
+                    online controller
+src/lib/archive/    finished games and their analyses; one interface, two backends
 src/lib/db/         Drizzle schema and the Neon connection
 src/lib/realtime/   Redis pub/sub — the doorbell, never the payload
 src/components/     board, coach, eval, game, review, practise, setup
@@ -135,8 +168,6 @@ board is drawn from a FEN.
 
 ## Not there yet
 
-No spectating, no chat, no takebacks — the last needs a whole negotiation and the
-middle needs moderation this does not have. Only one game's analysis is kept at a
-time, so reviewing a second replaces the first; the history list remembers that the
-earlier games happened, not what the coach said about them. Single-player games still
-live nowhere but your browser's `localStorage`, and still need no account.
+No spectating and no takebacks — the second needs opponent consent and a whole
+negotiation. No opening book beyond the first three moves. No report queue, for the
+reason above. A signed-out player's games stay on the device they were played on.

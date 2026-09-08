@@ -1,6 +1,7 @@
 "use client";
 
 import { serverNow, useOnline } from "@/lib/store/online-store";
+import type { ChatLine } from "./chat";
 import {
   rematchPhase,
   streamSettled,
@@ -80,6 +81,31 @@ export async function sendOffer(
   return { ok: true, rematchId: body?.rematchId ?? null };
 }
 
+/** Everything said after `after`. The cursor comes off the snapshot, so this is only
+ *  ever called when there is something to collect. */
+export async function fetchChat(gameId: string, after: number): Promise<ChatLine[]> {
+  const response = await timed(`/api/game/${gameId}/chat?after=${after}`, {
+    cache: "no-store",
+  });
+  if (!response.ok) return [];
+  const body = (await response.json().catch(() => null)) as { lines?: ChatLine[] } | null;
+  return body?.lines ?? [];
+}
+
+export async function sendChat(
+  gameId: string,
+  body: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const response = await timed(`/api/game/${gameId}/chat`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  if (response.ok) return { ok: true };
+  const failed = (await response.json().catch(() => null)) as { error?: string } | null;
+  return { ok: false, reason: failed?.error ?? "rejected" };
+}
+
 /**
  * Sends a move.
  *
@@ -123,6 +149,18 @@ export function connect(gameId: string): () => void {
      open — each time to be told the same result and closed again. The client stops on
      the same predicate the server closes on, which is why that predicate is shared
      rather than written twice. */
+  /* The snapshot advertises a cursor; this collects what it points past. Guarded on the
+     client's own high-water mark rather than on the previous snapshot, so a reconnect
+     that starts from a fresh store fetches the conversation once and no more. */
+  const catchUpChat = (snapshot: GameSnapshot) => {
+    const held = useOnline.getState().chat;
+    const have = held.length === 0 ? 0 : held[held.length - 1].id;
+    if (snapshot.chatSeq <= have) return;
+    void fetchChat(gameId, have).then((lines) => {
+      if (live && lines.length > 0) useOnline.getState().addChat(lines);
+    });
+  };
+
   const stopIfDone = (snapshot: GameSnapshot) => {
     if (!streamSettled(snapshot, serverNow())) return;
     live = false;
@@ -140,6 +178,7 @@ export function connect(gameId: string): () => void {
     void fetchSnapshot(gameId).then((snapshot) => {
       if (!snapshot || !live) return;
       useOnline.getState().applySnapshot(snapshot);
+      catchUpChat(snapshot);
       stopIfDone(snapshot);
     });
 
@@ -178,6 +217,7 @@ export function connect(gameId: string): () => void {
     }
     if (event.type === "snapshot") {
       useOnline.getState().applySnapshot(event.snapshot);
+      catchUpChat(event.snapshot);
       stopIfDone(event.snapshot);
       return;
     }
