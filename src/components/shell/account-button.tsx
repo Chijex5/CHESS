@@ -6,6 +6,7 @@ import { Show, UserButton, useAuth, useUser } from "@clerk/nextjs";
 import { LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { setArchiveSignedIn } from "@/lib/archive";
+import { importLocalGames } from "@/lib/archive/import-local";
 
 /* An account is optional, and the header has to say so: signed out you get a way
    in rather than a wall.
@@ -49,7 +50,12 @@ export function AccountButton() {
 function ArchiveIdentity() {
   const { isLoaded, isSignedIn } = useAuth();
   useEffect(() => {
-    if (isLoaded) setArchiveSignedIn(Boolean(isSignedIn));
+    if (!isLoaded) return;
+    setArchiveSignedIn(Boolean(isSignedIn));
+    /* Games played on this device before there was an account follow the player into
+       it, once. Fired and not awaited: it is a background upload, and nothing on the
+       page depends on it having finished. */
+    if (isSignedIn) void importLocalGames();
   }, [isLoaded, isSignedIn]);
   return null;
 }

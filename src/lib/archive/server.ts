@@ -17,19 +17,30 @@ export type ArchiveBody = {
   review?: ArchivedReview | null;
 };
 
+/** Fits a Postgres `integer`. Anything wider is a rejection rather than a rounded
+ *  guess: a value that large is not a mistyped move count, it is someone poking. */
+const INT_MAX = 2_147_483_647;
+
+/** 1970 to roughly 2100. `new Date(1e20)` is an Invalid Date, and inserting one throws
+ *  from inside the driver — a 500 where a 400 belongs. */
+const TIME_RANGE = { from: 0, to: 4_102_444_800_000 };
+
+const bounded = (value: unknown, max: number, min = 0): boolean =>
+  typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
+
+const boundedOrNull = (value: unknown, max: number, min = 0): boolean =>
+  value === null || value === undefined || bounded(value, max, min);
+
 /**
  * Whether a posted summary is one we will store.
  *
- * Everything a client sends about its own history is, in the end, its own business —
- * these are your statistics and lying to them only cheats you. So this checks shape
- * rather than plausibility: enough that a malformed body cannot violate a column or
- * poison an aggregate with a NaN, and no more. The owner is the one field never taken
- * from the body at all.
+ * What a client says about its own history is, in the end, its own business — these are
+ * your statistics and lying to them only cheats you. So the checks are about shape and
+ * range rather than plausibility: enough that a malformed body cannot violate a column,
+ * overflow an integer, or become an Invalid Date halfway down the driver. The owner is
+ * the one field never taken from the body at all.
  */
 export function validSummary(summary: GameSummary): boolean {
-  const finite = (value: number | null | undefined) =>
-    value === null || value === undefined || Number.isFinite(value);
-
   return (
     typeof summary.id === "string" &&
     summary.id.length > 0 &&
@@ -40,12 +51,36 @@ export function validSummary(summary: GameSummary): boolean {
     summary.opponent.length <= 120 &&
     ["win", "loss", "draw"].includes(summary.outcome) &&
     Number.isInteger(summary.moveCount) &&
-    summary.moveCount >= 0 &&
+    // A thousand-move game does not exist; a 2^31 one is somebody poking at the column.
+    bounded(summary.moveCount, 10_000) &&
     typeof summary.firstMoves === "string" &&
     summary.firstMoves.length <= 40 &&
-    Number.isFinite(summary.playedAt) &&
-    finite(summary.accuracy) &&
-    finite(summary.opponentRating)
+    bounded(summary.playedAt, TIME_RANGE.to, TIME_RANGE.from) &&
+    // A day per side is well past any real clock, and safely inside an integer.
+    bounded(summary.initialMs, 86_400_000) &&
+    bounded(summary.incrementMs, 86_400_000) &&
+    boundedOrNull(summary.accuracy, 100) &&
+    boundedOrNull(summary.opponentRating, INT_MAX, -INT_MAX) &&
+    boundedOrNull(summary.hinted, INT_MAX) &&
+    validTally(summary.qualities) &&
+    validConcepts(summary.concepts)
+  );
+}
+
+function validTally(qualities: GameSummary["qualities"]): boolean {
+  if (qualities === null || qualities === undefined) return true;
+  if (typeof qualities !== "object") return false;
+  return Object.values(qualities).every((count) => bounded(count, INT_MAX));
+}
+
+/** The one free-form field, so it is the one with a size limit rather than a shape. */
+function validConcepts(concepts: GameSummary["concepts"]): boolean {
+  if (concepts === null || concepts === undefined) return true;
+  if (typeof concepts !== "object") return false;
+  const entries = Object.entries(concepts);
+  if (entries.length > 64) return false;
+  return entries.every(
+    ([slug, count]) => slug.length <= 64 && bounded(count, INT_MAX),
   );
 }
 
