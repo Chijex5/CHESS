@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight, Settings2, Swords, Users } from "lucide-react";
+import { ChevronRight, Globe, Settings2, Swords, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChessBoard } from "@/components/board/chess-board";
 import { opponentFor } from "@/lib/engine/opponents";
@@ -79,11 +79,47 @@ export function HomeHero() {
             </Link>
           </Button>
 
+          {/* Both real now. Signing in is only required from here down — the engine
+              game above needs no account, which is why it is listed first. */}
+          <div className="flex gap-2.5">
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="h-12 flex-1 justify-start gap-2.5 px-3.5"
+            >
+              <Link href="/play/online">
+                <Globe className="size-4 shrink-0" aria-hidden />
+                <span className="flex min-w-0 flex-col items-start">
+                  <span className="text-sm leading-tight">A stranger</span>
+                  <span className="text-2xs font-normal leading-tight opacity-70">
+                    Rated
+                  </span>
+                </span>
+              </Link>
+            </Button>
+            <Button
+              asChild
+              size="lg"
+              variant="outline"
+              className="h-12 flex-1 justify-start gap-2.5 px-3.5"
+            >
+              <Link href="/play/friend">
+                <Users className="size-4 shrink-0" aria-hidden />
+                <span className="flex min-w-0 flex-col items-start">
+                  <span className="text-sm leading-tight">A friend</span>
+                  <span className="text-2xs font-normal leading-tight opacity-70">
+                    By link
+                  </span>
+                </span>
+              </Link>
+            </Button>
+          </div>
           <Button
             asChild
             size="lg"
-            variant="outline"
-            className="h-12 w-full justify-start gap-3 px-4"
+            variant="ghost"
+            className="h-11 w-full justify-start gap-3 px-4"
           >
             <Link href="/settings">
               <Settings2 className="size-4 shrink-0" aria-hidden />
@@ -93,19 +129,10 @@ export function HomeHero() {
           </Button>
         </div>
 
-        {/* Multiplayer is planned, so it gets an honest placeholder rather than a
-            missing feature people go looking for. */}
-        <div className="mt-2.5 flex items-center gap-3 rounded-lg border border-dashed px-4 py-2.5 text-sm text-muted-foreground">
-          <Users className="size-4 shrink-0" aria-hidden />
-          Play a friend
-          <span className="ms-auto rounded-full bg-muted px-2 py-0.5 text-2xs font-medium">
-            Soon
-          </span>
-        </div>
-
         <p className="mt-5 text-2xs leading-relaxed text-muted-foreground">
-          The engine runs client-side. Nothing about your game leaves the browser
-          until the coach is asked for an explanation.
+          The engine runs client-side. Nothing about a game against it leaves the
+          browser until the coach is asked for an explanation. Playing a person needs
+          an account, and no engine help is available while you do.
         </p>
       </div>
     </div>

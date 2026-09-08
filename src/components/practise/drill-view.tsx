@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Chess } from "chess.js";
 import {
@@ -9,6 +9,7 @@ import {
   Dumbbell,
   Eye,
   Lightbulb,
+  Loader2,
   Play,
   RotateCcw,
   SkipForward,
@@ -16,18 +17,26 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ChessBoard } from "@/components/board/chess-board";
 import { QualityBadge } from "@/components/coach/quality-badge";
 import { CoachProse } from "@/components/coach/coach-prose";
 import { ConceptChip } from "@/components/coach/concept-chip";
 import { ConceptDrawer } from "@/components/coach/concept-drawer";
-import { drillsFrom, judgeAttempt, type Drill, type Verdict } from "@/lib/game/drill";
+import {
+  drillsFrom,
+  drillsFromMany,
+  judgeAttempt,
+  type Drill,
+  type Verdict,
+} from "@/lib/game/drill";
+import { archive, isRestorable } from "@/lib/archive";
 import { CONCEPT_BY_SLUG, publicConcept } from "@/lib/coach/concepts";
 import { sortedAnnotations, useCoach } from "@/lib/store/coach-store";
 import { useSettings } from "@/lib/store/settings-store";
 import { playCue } from "@/lib/audio/sfx";
 import type { BoardArrow } from "@/components/board/board-arrows";
-import type { Concept, Square } from "@/lib/chess/types";
+import type { Annotation, Concept, Square } from "@/lib/chess/types";
 
 /** How a position ended up. Shown, not hidden: a set where four were revealed is a
  *  different session from one where four were solved, and the summary should say so. */
@@ -47,14 +56,59 @@ export function DrillView() {
   const settings = useSettings();
 
   const annotations = useMemo(() => sortedAnnotations(byPly), [byPly]);
-  const drills = useMemo(() => drillsFrom(annotations), [annotations]);
+
+  /* Every analysed game's mistakes, not just the loaded one's — which is the point of
+     keeping them. Loaded lazily and only when asked for: reading fifty stored reviews is
+     a megabyte of JSON, and the common case is drilling the game you just played. */
+  const [scope, setScope] = useState<"game" | "all">("game");
+  const [archived, setArchived] = useState<{ gameId: string; annotations: Annotation[] }[] | null>(
+    null,
+  );
+  useEffect(() => {
+    if (scope !== "all" || archived !== null) return;
+    let live = true;
+    void (async () => {
+      const store = await archive();
+      const summaries = await store.summaries(40);
+      const loaded = await Promise.all(
+        summaries.map(async (summary) => ({
+          gameId: summary.id,
+          review: await store.review(summary.id),
+        })),
+      );
+      if (!live) return;
+      setArchived(
+        loaded.flatMap(({ gameId, review }) =>
+          isRestorable(review) ? [{ gameId, annotations: review.annotations }] : [],
+        ),
+      );
+    })();
+    return () => {
+      live = false;
+    };
+  }, [scope, archived]);
+
+  const drills = useMemo(() => {
+    if (scope === "game") return drillsFrom(annotations);
+    /* The loaded game goes in too, and first, so its positions win the dedupe: it may
+       not be archived yet — the notes are still arriving — and a mistake you just made
+       should not be missing from a list of your mistakes. */
+    return drillsFromMany([
+      { gameId: "", annotations },
+      ...(archived ?? []).filter((source) => source.annotations.length > 0),
+    ]);
+  }, [scope, annotations, archived]);
+
+  const loadingAll = scope === "all" && archived === null;
 
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<Square | null>(null);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [judging, setJudging] = useState(false);
   const [revealed, setRevealed] = useState(false);
-  const [outcomes, setOutcomes] = useState<Record<number, Outcome>>({});
+  /* Keyed by `drill.key` rather than by ply. Every game has a fourteenth move, so a
+     ply number stopped being unique the moment a session could span games. */
+  const [outcomes, setOutcomes] = useState<Record<string, Outcome>>({});
   const [concept, setConcept] = useState<Concept | null>(null);
 
   const drill = drills[index];
@@ -91,8 +145,8 @@ export function DrillView() {
       .map(publicConcept);
   }, [note]);
 
-  const record = (ply: number, outcome: Outcome) =>
-    setOutcomes((prior) => (prior[ply] ? prior : { ...prior, [ply]: outcome }));
+  const record = (key: string, outcome: Outcome) =>
+    setOutcomes((prior) => (prior[key] ? prior : { ...prior, [key]: outcome }));
 
   const attempt = async (from: Square, to: Square) => {
     if (!drill) return;
@@ -104,7 +158,7 @@ export function DrillView() {
     setVerdict(result);
     if (result.kind === "best" || result.kind === "good") {
       playCue("win");
-      record(drill.ply, "solved");
+      record(drill.key, "solved");
     } else {
       playCue("illegal");
     }
@@ -135,12 +189,12 @@ export function DrillView() {
     playCue("note");
     setSelected(null);
     setRevealed(true);
-    record(drill.ply, "shown");
+    record(drill.key, "shown");
   };
 
   const skip = () => {
     if (!drill) return;
-    record(drill.ply, "skipped");
+    record(drill.key, "skipped");
     advance();
   };
 
@@ -153,6 +207,40 @@ export function DrillView() {
     };
   }, [outcomes]);
 
+  const scopeSwitch = (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      size="sm"
+      value={scope}
+      onValueChange={(value) => {
+        if (!value) return;
+        setScope(value as "game" | "all");
+        /* A different list is a different session: keeping the index would land you
+           somewhere arbitrary, and keeping the outcomes would credit you for positions
+           the new list may not contain. */
+        setIndex(0);
+        setOutcomes({});
+        clear();
+      }}
+      className="[&>button]:h-7 [&>button]:px-2 [&>button]:text-xs"
+    >
+      <ToggleGroupItem value="game">This game</ToggleGroupItem>
+      <ToggleGroupItem value="all">Every game</ToggleGroupItem>
+    </ToggleGroup>
+  );
+
+  if (loadingAll) {
+    return (
+      <div className="grid flex-1 place-items-center px-4 py-16">
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" aria-hidden />
+          Gathering your mistakes…
+        </p>
+      </div>
+    );
+  }
+
   if (drills.length === 0) {
     return (
       <div className="mx-auto grid w-full max-w-lg flex-1 place-items-center px-4 py-16 text-center">
@@ -160,14 +248,18 @@ export function DrillView() {
           <Dumbbell className="mx-auto size-8 text-muted-foreground/40" aria-hidden />
           <h1 className="mt-3 text-lg font-semibold">Nothing to practise yet</h1>
           <p className="mt-2 font-serif text-base leading-relaxed text-muted-foreground">
-            Every move the coach flagged becomes a position here, dealt back to you
-            with the answer hidden. Play a game first — the mistakes are the material.
+            {scope === "all"
+              ? "No analysed game has a flagged move in it yet. Analyse one and its mistakes land here."
+              : "Every move the coach flagged becomes a position here, dealt back to you with the answer hidden. Play a game first — the mistakes are the material."}
           </p>
-          <Button asChild className="mt-5">
-            <Link href="/play">
-              <Play className="size-4" aria-hidden /> Play a game
-            </Link>
-          </Button>
+          <div className="mt-5 flex flex-col items-center gap-3">
+            {scopeSwitch}
+            <Button asChild>
+              <Link href="/play">
+                <Play className="size-4" aria-hidden /> Play a game
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -229,8 +321,11 @@ export function DrillView() {
             <span className="tnum font-medium">{drill.lostPct.toFixed(0)}%</span>.
           </p>
         </div>
-        <span className="tnum ms-auto font-mono text-2xs text-muted-foreground">
-          {index + 1} / {drills.length} · {counts.solved} found
+        <span className="ms-auto flex shrink-0 items-center gap-2">
+          {scopeSwitch}
+          <span className="tnum font-mono text-2xs text-muted-foreground">
+            {index + 1} / {drills.length} · {counts.solved} found
+          </span>
         </span>
       </header>
 

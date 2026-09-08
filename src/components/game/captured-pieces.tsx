@@ -2,6 +2,11 @@ import { cn } from "@/lib/utils";
 import { PieceGlyph } from "@/components/board/piece-glyph";
 import type { PieceColor, PieceType } from "@/lib/chess/types";
 
+/* A complete capture tray can hold fifteen pieces. Six overlapping glyphs retain
+   the familiar material-at-a-glance cue without competing with a player's name,
+   rating, and clock for the one-row layout. */
+const MAX_VISIBLE_PIECES = 6;
+
 /** The pieces this side has taken, plus the running material count — the
  *  physical equivalent of the little pile beside a real board. */
 export function CapturedPieces({
@@ -18,10 +23,16 @@ export function CapturedPieces({
   advantage?: number;
   className?: string;
 }) {
+  const visiblePieces = pieces.slice(0, MAX_VISIBLE_PIECES);
+  const hiddenCount = pieces.length - visiblePieces.length;
+
   return (
-    <div className={cn("flex items-center gap-1", className)}>
-      <div className="flex items-center">
-        {pieces.map((t, i) => (
+    <div
+      className={cn("flex items-center gap-1", className)}
+      aria-label={`${pieces.length} captured ${pieces.length === 1 ? "piece" : "pieces"}`}
+    >
+      <div className="flex shrink-0 items-center">
+        {visiblePieces.map((t, i) => (
           <PieceGlyph
             key={`${t}${i}`}
             type={t}
@@ -30,8 +41,16 @@ export function CapturedPieces({
           />
         ))}
       </div>
+      {hiddenCount > 0 && (
+        <span
+          className="tnum shrink-0 font-mono text-2xs font-medium text-muted-foreground"
+          title={`${hiddenCount} additional captured ${hiddenCount === 1 ? "piece" : "pieces"}`}
+        >
+          +{hiddenCount}
+        </span>
+      )}
       {advantage !== undefined && advantage > 0 && (
-        <span className="tnum font-mono text-2xs font-medium text-muted-foreground">
+        <span className="tnum shrink-0 font-mono text-2xs font-medium text-muted-foreground">
           +{advantage}
         </span>
       )}

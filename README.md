@@ -9,7 +9,8 @@ your own mistakes back to you until you can solve them.
 
 There is one API key, for the coach. Everything else — the engine, move legality,
 evaluations, the severity classification, concept retrieval — runs locally with no
-key and no external service.
+key and no external service. Playing another person needs an account and a database,
+and nothing else does: every single-player route works signed out.
 
 ## Running it
 
@@ -19,6 +20,10 @@ cp .env.example .env      # add a Gemini key; see the file for where to get one
 pnpm dev
 ```
 
+That is enough for the whole single-player app. Multiplayer additionally wants Clerk,
+Neon and Redis — `.env.example` lists each and says where it comes from — plus
+`pnpm db:migrate` once the database URL is set.
+
 The engine's WebAssembly is copied out of `node_modules` into `public/engine/` by
 `scripts/copy-engine.mjs`, which `dev` and `build` both run. It is gitignored — 7 MB
 of build output does not belong in a repository.
@@ -27,7 +32,8 @@ of build output does not belong in a repository.
 |---|---|
 | `pnpm dev` | Next.js with Turbopack |
 | `pnpm build` | production build |
-| `pnpm verify` | concept examples → `tsc` → `eslint` → `build` |
+| `pnpm verify` | concept examples → `tsc` → `eslint` → `vitest` → `build` |
+| `pnpm db:generate` / `pnpm db:migrate` | Drizzle migrations (multiplayer only) |
 | `pnpm concepts` | verify the worked example on every concept page |
 
 ## How a move becomes an explanation
@@ -48,6 +54,66 @@ of build output does not belong in a repository.
 Every number the coach quotes is one the engine produced. It is not asked to
 evaluate anything.
 
+## Playing another person
+
+Single player has no server: `chess.js` at module scope decides legality, clocks and
+results, which is correct against a local engine and completely wrong against another
+person. So online games are adjudicated server-side — the server replays the move list,
+validates with the same library, stamps the time, and the client's board becomes a
+mirror it reconciles rather than a source of truth.
+
+- **SSE down, POST up.** A move goes up as a plain `POST`; state comes down on an event
+  stream. A WebSocket would buy bidirectionality nothing uses, and the socket dies at
+  the function's duration ceiling anyway.
+- **Postgres is the truth, Redis is the doorbell.** The pub/sub message carries a
+  sequence number and nothing else, so a dropped notification costs a round trip rather
+  than a move — and with no `REDIS_URL` at all the stream degrades to its heartbeat and
+  games still finish.
+- **No engine help during a live game.** No eval bar, no hints, no coach — absent
+  rather than disabled, because a greyed-out hint button still says the app knows the
+  answer. When the game ends, the client analyses the finished move list with its own
+  Stockfish and the full review, accuracy figures and drills work unchanged.
+- **Rating is Glicko-2**, so a new player's number moves fast and a settled one moves
+  slowly, and the matchmaking queue widens its window by the deviation instead of
+  guessing at ±150. Only queue games are rated; a link you sent a friend is not
+  evidence about your strength.
+- **Abandonment is handled by the clock.** Close the tab and your time runs out. No
+  disconnect detection, no new concept.
+- **A rematch is a pointer on the finished game.** Colours swap, the time control and
+  the rated flag are inherited, and it is offerable for two minutes — for exactly as
+  long as the event stream that would carry the answer stays open.
+- **Friends are one row per pair**, keyed on the two ids in sorted order, so asking
+  somebody who has already asked you *is* accepting them and a duplicate is impossible
+  rather than merely checked for. A challenge is a pending game with their name on it:
+  no notification to expire, and it is still there when they next look.
+- **Chat has no moderator, so the controls belong to you.** Mute is local and block is
+  mutual, and neither is announced — a mute the other player can detect is a mute that
+  starts an argument. The server only caps length and rate. There is no report queue,
+  because there is nobody to read it and a button that does nothing is worse than none.
+
+## What the games add up to
+
+Every finished game is filed with its analysis attached, which is what makes accuracy
+a trend rather than a fact about the last game you played.
+
+- **One archive, two backends, never both.** Postgres when you are signed in,
+  IndexedDB when you are not — a merge would mean deciding which is right whenever
+  they disagreed. IndexedDB rather than `localStorage` because a stored review is tens
+  of kilobytes and fifty of them overrun the quota, from a synchronous write that
+  zustand's persist middleware swallows.
+- **Summaries and analyses are separate tables**, because a statistics page scans every
+  summary you own and wants a review one at a time.
+- **`null` accuracy means "not analysed"**, which is a real state: the server files an
+  online game's result the moment it ends, when nothing has been searched yet. Those
+  games count towards your record and towards no average.
+- **The most useful statistic is which ideas keep costing you games** — concept slugs
+  the coach cited against your own mistakes, ranked by how many separate games they
+  turned up in, because three games with one loose piece each is a habit and one game
+  with four is a bad afternoon.
+- **Charts are single-hue and directly labelled.** Fed to a palette validator the
+  move-quality ramp fails adjacent separation — `best` and `good` are 4.5 ΔE apart to
+  normal vision — which is fine on badges that also carry a glyph and wrong in a chart.
+
 ## Layout
 
 ```
@@ -57,10 +123,16 @@ src/lib/chess/      FEN, evaluation curves, move-quality classification
 src/lib/game/       the live game (mutable chess.js at module scope), plus
                     drills, stats, time controls
 src/lib/coach/      prompts, retrieval, the concept corpus
-src/lib/store/      zustand: game, engine, coach, hint, clock, settings
+src/lib/store/      zustand: game, engine, coach, hint, clock, settings,
+                    online (not persisted — an online game lives on the server)
+src/lib/multiplayer/  server rules, the wire protocol, friends, chat, the
+                    online controller
+src/lib/archive/    finished games and their analyses; one interface, two backends
+src/lib/db/         Drizzle schema and the Neon connection
+src/lib/realtime/   Redis pub/sub — the doorbell, never the payload
 src/components/     board, coach, eval, game, review, practise, setup
-src/app/            /, /play, /review, /practise, /concepts, /settings,
-                    and /api/coach
+src/app/            /, /play, /play/friend, /play/online, /g/[id], /review,
+                    /practise, /concepts, /profile, /settings, and the API
 ```
 
 The live position is a mutable `chess.js` instance at module scope rather than
@@ -96,7 +168,6 @@ board is drawn from a FEN.
 
 ## Not there yet
 
-Single player only — multiplayer is planned and the landing page says so rather
-than hiding it. Only the current game is kept, so finishing one replaces the last;
-there is no game history and no accounts. Nothing is stored anywhere but your
-browser's `localStorage`.
+No spectating and no takebacks — the second needs opponent consent and a whole
+negotiation. No opening book beyond the first three moves. No report queue, for the
+reason above. A signed-out player's games stay on the device they were played on.

@@ -22,7 +22,7 @@ import { Clock } from "./clock";
 import { MobileCoachDock } from "./mobile-coach-dock";
 import { SideRail, type RailTab } from "./side-rail";
 import { BoardMenu } from "./board-menu";
-import { BoardMessageLine, type BoardMessage } from "./board-message";
+import { BoardMessageLine, RiskWarningDialog, type BoardMessage } from "./board-message";
 import { GameOverDialog } from "./game-over-dialog";
 import { SettingsPanel } from "@/components/setup/settings-panel";
 import { opponentFor } from "@/lib/engine/opponents";
@@ -96,6 +96,12 @@ export function PlayView() {
     [game.plies, byPly, game.hintedPlies],
   );
   const live = game.viewPly === game.plies.length;
+  /* Filing a finished game used to happen here, into a fifty-entry list keyed by a
+     FEN-and-prose string. The controller does it now, at every point a game can end and
+     again once the coach has finished — which is where it belongs, because a view that
+     is not mounted still ends games (resign from the board menu, a flag falling on a
+     background tab) and because the archive wants the analysis, which arrives later
+     than any render. */
   const fen = fenAtPly(game.plies, game.viewPly);
   const tray = useMemo(() => capturedFrom(parseFen(fen).cells), [fen]);
 
@@ -220,25 +226,18 @@ export function PlayView() {
 
   const playerSide = game.playerColor === "w" ? "white" : "black";
 
-  /* One message, chosen by urgency. A move you have been warned about is blocking
-     your own turn, so it outranks a result you have already been shown in a modal,
-     which outranks an engine complaint, which outranks the opponent's clock. */
-  const message: BoardMessage = game.pendingRisk
-    ? {
-        kind: "risk",
-        text: game.pendingRisk.reason,
-        onLookAgain: dismissPendingRisk,
-        onPlayAnyway: confirmPendingRisk,
-      }
-    : game.result
-      ? { kind: "result", text: game.result.outcome, won: game.result.playerWon }
-      : engine.error
-        ? { kind: "engine-error", text: engine.error }
-        : game.status === "thinking"
-          ? { kind: "thinking" }
-          : evalHidden
-            ? null
-            : { kind: "standing", text: describeEval(displayEval, playerSide) };
+  /* The warning itself is a focused dialog, rather than a status-row message that
+     can be hidden beside the captured pieces. This line remains for non-blocking
+     status only. */
+  const message: BoardMessage = game.result
+    ? { kind: "result", text: game.result.outcome, won: game.result.playerWon }
+    : engine.error
+      ? { kind: "engine-error", text: engine.error }
+      : game.status === "thinking"
+        ? { kind: "thinking" }
+        : evalHidden
+          ? null
+          : { kind: "standing", text: describeEval(displayEval, playerSide) };
 
   const writing = annotations.some(
     (a) => a.stage === "streaming" || a.stage === "retrieving" || a.stage === "analyzing",
@@ -277,6 +276,11 @@ export function PlayView() {
       className="mx-auto flex w-full max-w-[92rem] flex-1 flex-col gap-3 px-3 py-3 sm:px-5 lg:h-[calc(100svh-3.5rem)] lg:flex-none"
       data-board={settings.boardTheme}
     >
+      <RiskWarningDialog
+        risk={game.pendingRisk}
+        onLookAgain={dismissPendingRisk}
+        onPlayAnyway={confirmPendingRisk}
+      />
       {/* Two columns, not three. `minmax(0,1fr)` on the row is what stops a long
           notation list or a stack of coach cards from stretching the shell. */}
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_21rem] lg:grid-rows-[minmax(0,1fr)]">
