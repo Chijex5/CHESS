@@ -43,15 +43,19 @@ export async function joinGame(gameId: string): Promise<GameSnapshot | null> {
 export async function createGame(input: {
   side: "white" | "black" | "random";
   timeControl: string;
-}): Promise<string | null> {
+  /** Addresses the game to one player by username, so only they can sit down. */
+  invite?: string;
+}): Promise<{ id: string } | { error: string }> {
   const response = await timed("/api/game", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!response.ok) return null;
-  const { id } = (await response.json()) as { id: string };
-  return id;
+  const body = (await response.json().catch(() => null)) as
+    | { id?: string; error?: string }
+    | null;
+  if (!response.ok || !body?.id) return { error: body?.error ?? "failed" };
+  return { id: body.id };
 }
 
 /**

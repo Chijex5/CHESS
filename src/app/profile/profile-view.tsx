@@ -2,11 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BarChart3, Flame, ListOrdered, Sparkles, Swords, Target, Trophy } from "lucide-react";
+import {
+  BarChart3,
+  Flame,
+  ListOrdered,
+  Sparkles,
+  Swords,
+  Target,
+  Trophy,
+  Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LineChart } from "@/components/stats/line-chart";
 import { BarList, type BarRow } from "@/components/stats/bar-list";
 import { RecordBar, StatTile } from "@/components/stats/record-bar";
+import { FriendsPanel } from "@/components/social/friends-panel";
 import { archive } from "@/lib/archive";
 import type { GameSummary } from "@/lib/archive/types";
 import {
@@ -99,6 +109,16 @@ export function ProfileView() {
           </Button>
         )}
       </header>
+
+      {!signedOut && (
+        <Panel
+          title="People"
+          icon={Users}
+          note="Challenge a friend and the game waits at the board with their name on it."
+        >
+          <FriendsPanel />
+        </Panel>
+      )}
 
       {stats === null ? (
         <p className="mt-8 text-center text-sm text-muted-foreground">

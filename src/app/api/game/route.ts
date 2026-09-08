@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { createGame, myGames } from "@/lib/multiplayer/games";
 import { ensurePlayer } from "@/lib/multiplayer/players";
+import { byUsername, stateBetween } from "@/lib/multiplayer/friends-db";
+import { canInteract } from "@/lib/multiplayer/friends";
 import { timeControlFor, type TimeControlId } from "@/lib/game/time-controls";
 import type { Seat } from "@/lib/multiplayer/protocol";
 
 type Body = {
   side?: Seat | "random";
   timeControl?: TimeControlId;
+  /** Addresses the game to one player, by username. */
+  invite?: string;
 };
 
 /** Creates a game and returns its id, which is also its invite link. */
@@ -25,6 +29,21 @@ export async function POST(request: Request) {
      shortest offered is the floor. */
   const initialMs = control.initialMs > 0 ? control.initialMs : 600_000;
 
+  /* A challenge to a named player. Resolved and permission-checked here rather than at
+     join time, so somebody who has blocked you never receives the invitation at all —
+     and so a typo in a username fails now, while you are still looking at the form. */
+  let invitedId: string | null = null;
+  if (body.invite) {
+    const them = await byUsername(body.invite.trim());
+    if (!them) return NextResponse.json({ error: "no-such-player" }, { status: 404 });
+    if (them.id === player.id) return NextResponse.json({ error: "thats-you" }, { status: 400 });
+    if (!canInteract(await stateBetween(player.id, them.id))) {
+      // The same answer either direction of a block, which is the point of it.
+      return NextResponse.json({ error: "not-available" }, { status: 403 });
+    }
+    invitedId = them.id;
+  }
+
   const id = await createGame({
     createdBy: player.id,
     side: body.side ?? "random",
@@ -32,6 +51,7 @@ export async function POST(request: Request) {
     incrementMs: control.incrementMs,
     // A game you invited a specific person to is not evidence about your strength.
     rated: false,
+    invitedId,
   });
 
   return NextResponse.json({ id });

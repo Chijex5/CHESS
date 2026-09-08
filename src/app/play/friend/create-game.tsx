@@ -26,8 +26,8 @@ export function CreateGame() {
   const create = async () => {
     setCreating(true);
     setError(null);
-    const id = await createGame({ side, timeControl });
-    if (!id) {
+    const created = await createGame({ side, timeControl });
+    if ("error" in created) {
       setCreating(false);
       setError("Could not create the game. Check you are still signed in.");
       return;
@@ -36,7 +36,7 @@ export function CreateGame() {
        other seat is empty, so the host waits where they will play — and `creating`
        stays true through the navigation, because releasing it would flash the form
        again on the way out. */
-    router.push(`/g/${id}`);
+    router.push(`/g/${created.id}`);
   };
 
   return (

@@ -40,6 +40,10 @@ export type CreateOptions = {
   initialMs: number;
   incrementMs: number;
   rated: boolean;
+  /** Addressed to one person: only they can take the other seat. A challenge rather
+   *  than a link, which is the difference between "here is a game" and "I am asking
+   *  you". */
+  invitedId?: string | null;
 };
 
 /**
@@ -89,6 +93,7 @@ export async function createGame(options: CreateOptions): Promise<string> {
     initialMs: options.initialMs,
     incrementMs: options.incrementMs,
     rated: options.rated ? 1 : 0,
+    invitedId: options.invitedId ?? null,
     status: "pending",
   });
   return id;
@@ -113,6 +118,10 @@ export async function joinGame(
       ? { seat: game.whiteId === userId ? "white" : "black", startedAt: game.startedAt }
       : null;
   }
+  /* A challenge names its opponent, so anybody else following the link is a spectator
+     of an empty board rather than a player. Checked here rather than in the route
+     because this is the only function that seats anyone. */
+  if (game.invitedId && game.invitedId !== userId) return null;
 
   const seat: Seat = game.whiteId === null ? "white" : "black";
   const startedAt = new Date();
