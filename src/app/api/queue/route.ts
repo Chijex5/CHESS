@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createPairedGame } from "@/lib/multiplayer/games";
+import { createEngineFallbackGame, createPairedGame } from "@/lib/multiplayer/games";
 import { ensurePlayer } from "@/lib/multiplayer/players";
 import {
   claimMatch,
@@ -8,7 +8,9 @@ import {
   publishMatch,
   queueDepth,
   tryPair,
+  waitedInQueue,
 } from "@/lib/multiplayer/queue";
+import { ENGINE_FALLBACK_AFTER_MS } from "@/lib/multiplayer/queue";
 import { timeControlFor, type TimeControlId } from "@/lib/game/time-controls";
 
 /* No background worker: pairing happens on the request of whoever just arrived or just
@@ -54,6 +56,16 @@ export async function POST(request: Request) {
   });
 
   if (!pair) {
+    if ((await waitedInQueue(controlId, player.id)) >= ENGINE_FALLBACK_AFTER_MS) {
+      await dequeue(controlId, player.id);
+      const gameId = await createEngineFallbackGame({
+        playerId: player.id,
+        rating: player.rating,
+        initialMs: control.initialMs,
+        incrementMs: control.incrementMs,
+      });
+      return NextResponse.json({ status: "matched", gameId });
+    }
     return NextResponse.json({
       status: "waiting",
       waiting: await queueDepth(controlId),

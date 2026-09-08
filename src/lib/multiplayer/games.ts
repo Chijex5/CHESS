@@ -5,6 +5,13 @@ import { games, messages, moves, offers, players, type Game } from "@/lib/db/sch
 import { applyGame, type Rating } from "@/lib/game/rating";
 import { publishChange } from "@/lib/realtime/bus";
 import { archiveFinished } from "./archive";
+import {
+  HOUSE_ID,
+  HOUSE_USERNAME,
+  botDisplayName,
+  housePlayer,
+  isHouse,
+} from "./bot";
 import { gameId as newGameId } from "./ids";
 import { publicPlayer } from "./players";
 import {
@@ -65,6 +72,7 @@ export async function createPairedGame(options: {
   initialMs: number;
   incrementMs: number;
   rated: boolean;
+  engineElo?: number | null;
 }): Promise<string> {
   const id = newGameId();
   const startedAt = new Date();
@@ -75,8 +83,71 @@ export async function createPairedGame(options: {
     initialMs: options.initialMs,
     incrementMs: options.incrementMs,
     rated: options.rated ? 1 : 0,
+    engineElo: options.engineElo ?? null,
     status: "active",
     startedAt,
+  });
+  await publishChange(id, 0);
+  return id;
+}
+
+/** Creates the engine's one shared row, if it is not already there. Done on the fallback
+ *  path rather than seeded by a migration, so a fresh database needs no extra step. */
+async function ensureHousePlayer(): Promise<void> {
+  await db
+    .insert(players)
+    .values({
+      clerkUserId: HOUSE_ID,
+      username: HOUSE_USERNAME,
+      /* Never read — `housePlayer` takes the rating from the game — but a row has to have
+         one, and 1500 is the unrated default rather than a claim. */
+      rating: 1500,
+      rd: 350,
+      volatility: 0.06,
+    })
+    .onConflictDoNothing({ target: players.clerkUserId });
+}
+
+/**
+ * Creates a game against the engine, wearing a human-looking name.
+ *
+ * The seat is the one house account; the name the player sees is a column on this game.
+ * It used to be a fresh `players` row per game with the name as its username, which
+ * `players.username` being UNIQUE made a collision waiting to happen — see `bot.ts` for
+ * the three ways that went wrong.
+ *
+ * Unrated, and that is not incidental: an invented opponent must never move a real
+ * player's rating. `finish` already declines to apply ratings to an unrated game.
+ */
+export async function createEngineFallbackGame(options: {
+  playerId: string;
+  rating: number;
+  initialMs: number;
+  incrementMs: number;
+}): Promise<string> {
+  const id = newGameId();
+  /* Within twenty points of the player, clamped to what the engine can actually be set
+     to. A fallback that is obviously weaker or obviously stronger reads as a consolation
+     prize rather than a game. */
+  const engineElo = Math.max(
+    1320,
+    Math.min(3190, Math.round(options.rating + (Math.floor(Math.random() * 41) - 20))),
+  );
+
+  await ensureHousePlayer();
+
+  const humanWhite = Math.random() < 0.5;
+  await db.insert(games).values({
+    id,
+    whiteId: humanWhite ? options.playerId : HOUSE_ID,
+    blackId: humanWhite ? HOUSE_ID : options.playerId,
+    initialMs: options.initialMs,
+    incrementMs: options.incrementMs,
+    rated: 0,
+    engineElo,
+    botName: botDisplayName(),
+    status: "active",
+    startedAt: new Date(),
   });
   await publishChange(id, 0);
   return id;
@@ -155,6 +226,11 @@ async function moveRows(id: string) {
   return db.select().from(moves).where(eq(moves.gameId, id)).orderBy(asc(moves.seq));
 }
 
+/** The offer policy needs the authoritative position too; never trust a client FEN. */
+export async function moveRowsForGame(id: string) {
+  return moveRows(id);
+}
+
 function toStored(row: Awaited<ReturnType<typeof moveRows>>[number]): StoredMove {
   return {
     seq: row.seq,
@@ -196,9 +272,12 @@ export async function snapshot(id: string, userId: string | null): Promise<GameS
      the arithmetic itself. Sending both would mean projecting twice. */
   const banked = remaining(clock, last);
 
+  /* The house seat is drawn from this game rather than looked up: one row is shared by
+     every fallback game, so its username and rating say nothing about this one. The
+     name is on the game and the strength is `engineElo`. */
   const [white, black, offer, chatSeq] = await Promise.all([
-    game.whiteId ? playerRow(game.whiteId) : null,
-    game.blackId ? playerRow(game.blackId) : null,
+    isHouse(game.whiteId) ? housePlayer(game) : game.whiteId ? playerRow(game.whiteId) : null,
+    isHouse(game.blackId) ? housePlayer(game) : game.blackId ? playerRow(game.blackId) : null,
     openOffer(id),
     lastMessageId(id),
   ]);
@@ -230,6 +309,7 @@ export async function snapshot(id: string, userId: string | null): Promise<GameS
     rematchId: game.rematchId,
     chatSeq,
     rated: game.rated === 1,
+    engineElo: game.engineElo,
     ratings:
       game.whiteRatingAfter !== null && game.blackRatingAfter !== null
         ? {
@@ -369,6 +449,25 @@ export async function submitMove(
   return { ok: true, seq: verdict.seq, san: verdict.san };
 }
 
+/** A queue fallback may only be advanced by its human opponent, but the move is
+ * adjudicated as the synthetic seat so all normal clock and legality rules apply. */
+export async function submitEngineMove(
+  id: string,
+  userId: string,
+  request: MoveRequest,
+): Promise<SubmitResult> {
+  const game = await gameRow(id);
+  if (!game || game.engineElo === null) {
+    return { ok: false, reason: "not-an-engine-game", status: 404 };
+  }
+  const botSeat = isHouse(game.whiteId) ? "white" : isHouse(game.blackId) ? "black" : null;
+  if (!botSeat) return { ok: false, reason: "not-an-engine-game", status: 404 };
+  const humanId = botSeat === "white" ? game.blackId : game.whiteId;
+  // Only the human in this game may advance it, and only ever the other seat.
+  if (humanId !== userId) return { ok: false, reason: "not-a-player", status: 403 };
+  return submitMove(id, HOUSE_ID, request);
+}
+
 /**
  * Records the result, once.
  *
@@ -497,6 +596,21 @@ export async function offerRematch(id: string, userId: string): Promise<RematchR
 
   // Already agreed: hand back where to go rather than opening a second negotiation.
   if (game.rematchId) return { ok: true, rematchId: game.rematchId };
+  /* There is no second browser to wait for. The fallback accepts immediately and
+     * preserves its hidden strength while colours swap. */
+  if (game.engineElo !== null && game.whiteId && game.blackId) {
+    const rematchId = await createPairedGame({
+      white: game.blackId,
+      black: game.whiteId,
+      initialMs: game.initialMs,
+      incrementMs: game.incrementMs,
+      rated: false,
+      engineElo: game.engineElo,
+    });
+    await db.update(games).set({ rematchId }).where(and(eq(games.id, id), isNull(games.rematchId)));
+    await publishChange(id, -3);
+    return { ok: true, rematchId };
+  }
 
   /* If the opponent has already offered, offering back *is* accepting. Without this,
      two players who both press Rematch in the same second would each be waiting for
