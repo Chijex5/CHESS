@@ -53,7 +53,6 @@ import { unlockAudio } from "@/lib/audio/sfx";
 import { capturedFrom, parseFen, squareToIndex } from "@/lib/chess/fen";
 import { splitUci } from "@/lib/game/notation";
 import type { Concept, PieceType, Square } from "@/lib/chess/types";
-import { useGameHistory } from "@/lib/store/game-history-store";
 
 /* ── The playing surface ──────────────────────────────────────────────────────
    Rebuilt around one rule, taken from lichess's own layout brief: the board should
@@ -72,7 +71,6 @@ export function PlayView() {
   const byPly = useCoach((state) => state.byPly);
   const hint = useHint();
   const settings = useSettings();
-  const addHistory = useGameHistory((state) => state.add);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [concept, setConcept] = useState<Concept | null>(null);
   const [rail, setRail] = useState<RailTab>("coach");
@@ -98,16 +96,12 @@ export function PlayView() {
     [game.plies, byPly, game.hintedPlies],
   );
   const live = game.viewPly === game.plies.length;
-  useEffect(() => {
-    if (!game.result || game.plies.length === 0) return;
-    addHistory({
-      id: `engine:${game.plies.at(-1)?.fenAfter}:${game.result.detail}`,
-      outcome: game.result.playerWon === null ? "Draw" : game.result.playerWon ? "Won" : "Lost",
-      opponent: `Stockfish ${settings.elo}`,
-      playedAt: new Date().toISOString(),
-      moves: Math.ceil(game.plies.length / 2),
-    });
-  }, [addHistory, game.plies, game.result, settings.elo]);
+  /* Filing a finished game used to happen here, into a fifty-entry list keyed by a
+     FEN-and-prose string. The controller does it now, at every point a game can end and
+     again once the coach has finished — which is where it belongs, because a view that
+     is not mounted still ends games (resign from the board menu, a flag falling on a
+     background tab) and because the archive wants the analysis, which arrives later
+     than any render. */
   const fen = fenAtPly(game.plies, game.viewPly);
   const tray = useMemo(() => capturedFrom(parseFen(fen).cells), [fen]);
 

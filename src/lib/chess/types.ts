@@ -116,10 +116,30 @@ export type PlyRecord = {
 
 export type GameStatus = "idle" | "playing" | "thinking" | "over";
 
+/** Why a game ended, as a value rather than a sentence.
+ *
+ *  Lives here rather than in the multiplayer protocol, which is where it started: these
+ *  are facts about chess, and an engine game ends for the same reasons an online one
+ *  does. It moved when the archive needed to store an engine game's ending and count how
+ *  your losses actually arrive — a question no amount of prose in `detail` can answer. */
+export type GameEnding =
+  | "checkmate"
+  | "resignation"
+  | "timeout"
+  | "stalemate"
+  | "insufficient-material"
+  | "threefold"
+  | "fifty-move"
+  | "agreement"
+  | "abandoned";
+
 export type GameResult = {
   outcome: string;
   detail: string;
   playerWon: boolean | null;
+  /** The machine-readable half of `outcome`. Optional only because a hand-built result
+   *  in a test need not bother; every real one sets it. */
+  ending?: GameEnding;
   /** Set for a reviewed multiplayer game so the review never invents an engine opponent. */
   playerName?: string;
   opponentName?: string;

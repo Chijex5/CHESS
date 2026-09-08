@@ -2,10 +2,12 @@ import {
   bigint,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
   real,
+  serial,
   text,
   timestamp,
   uniqueIndex,
@@ -115,11 +117,16 @@ export const games = pgTable(
        and accepting at once) must not create two games, and a conditional update on
        `rematch_id IS NULL` decides that in one statement. */
     rematchId: text("rematch_id").references((): AnyPgColumn => games.id),
+    /** Set when this game is a challenge to one named person rather than an open
+     *  link. `joinGame` refuses the seat to anybody else, which is the whole
+     *  difference between "here is a link" and "I am asking you". */
+    invitedId: text("invited_id").references(() => players.clerkUserId),
   },
   (table) => [
     index("games_white_idx").on(table.whiteId, table.createdAt),
     index("games_black_idx").on(table.blackId, table.createdAt),
     index("games_status_idx").on(table.status),
+    index("games_invited_idx").on(table.invitedId, table.status),
   ],
 );
 
@@ -177,6 +184,157 @@ export const offers = pgTable("offers", {
   offeredAt: timestamp("offered_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/* ── The archive ──────────────────────────────────────────────────────────────
+   `games` is the write model: it adjudicates one live game, and every column on it
+   exists so the server can decide something. `played_games` is the read model for
+   looking *back* over many, and the two are deliberately separate.
+
+   That means an online game is written to both, which is duplication with a reason.
+   A history list and a statistics page have to treat a game against Stockfish and a
+   game against a person as the same kind of thing — same accuracy figure, same
+   weakness tally, same row in the same table — and an engine game has no `games` row
+   at all, because it was never adjudicated by anyone. One shape for both is what
+   makes the archive a single interface rather than a union of two queries.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+export const gameSource = pgEnum("game_source", ["engine", "online"]);
+export const gameOutcome = pgEnum("game_outcome", ["win", "loss", "draw"]);
+
+/** One finished game, from one player's point of view.
+ *
+ *  Keyed by (owner, game) rather than by game: both sides of an online game get a
+ *  row, and each says "win" or "loss" from where they were sitting. Storing it once
+ *  with a winner would mean every read had to work out which chair the reader was in,
+ *  in every aggregate, forever. */
+export const playedGames = pgTable(
+  "played_games",
+  {
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => players.clerkUserId, { onDelete: "cascade" }),
+    /** The server's id for an online game; a client-generated one for an engine
+     *  game, which no server ever saw. */
+    gameId: text("game_id").notNull(),
+    source: gameSource("source").notNull(),
+    side: text("side", { enum: ["white", "black"] }).notNull(),
+    /** Who you played, as it should be printed: a username, or "Karpov · 1600" for
+     *  one of the named engine opponents. Denormalised because a history row must
+     *  still read correctly after they rename themselves. */
+    opponent: text("opponent").notNull(),
+    opponentRating: integer("opponent_rating"),
+    outcome: gameOutcome("outcome").notNull(),
+    ending: gameEnding("ending"),
+    moveCount: integer("move_count").notNull(),
+    /** The first three plies, space-separated SAN. Enough to say what you open with
+     *  and how it goes, without an opening book. */
+    firstMoves: text("first_moves").notNull().default(""),
+    initialMs: integer("initial_ms").notNull().default(0),
+    incrementMs: integer("increment_ms").notNull().default(0),
+    rated: integer("rated").notNull().default(0),
+    /* Everything below arrives later than the row does. The server writes an online
+       game's result the moment it ends and cannot know the accuracy, because nothing
+       has been searched yet — the client analyses the finished move list afterwards
+       and upserts these in. Null therefore means "not analysed", which is a real and
+       common state, not a missing value. */
+    accuracy: real("accuracy"),
+    brilliants: integer("brilliants"),
+    bests: integer("bests"),
+    inaccuracies: integer("inaccuracies"),
+    mistakes: integer("mistakes"),
+    blunders: integer("blunders"),
+    hinted: integer("hinted"),
+    /** Concept slug → how many of your own mistakes the coach cited it against. The
+     *  one statistic this whole application exists to produce. */
+    concepts: jsonb("concepts").$type<Record<string, number>>(),
+    playedAt: timestamp("played_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.ownerId, table.gameId] }),
+    index("played_owner_idx").on(table.ownerId, table.playedAt),
+  ],
+);
+
+/** The analysis itself: plies, every position's evaluation, and the coach's notes.
+ *
+ *  A separate table because of how differently the two are read. A statistics page
+ *  scans every row a player owns; this is tens of kilobytes each and is wanted one at
+ *  a time, when somebody opens a review. Keeping it out of `played_games` is the
+ *  difference between a stats query reading a few kilobytes and reading megabytes. */
+export const gameReviews = pgTable(
+  "game_reviews",
+  {
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => players.clerkUserId, { onDelete: "cascade" }),
+    gameId: text("game_id").notNull(),
+    /** The working set as the three client stores hold it. Opaque here on purpose:
+     *  the server never reads inside it, so its shape is versioned by the client
+     *  rather than by a migration. */
+    payload: jsonb("payload").notNull(),
+    /** Shape of `payload`, so a client meeting an older row can decide whether to
+     *  restore it or re-analyse the game from scratch. */
+    version: integer("version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.ownerId, table.gameId] })],
+);
+
+/* ── Friends ──────────────────────────────────────────────────────────────────
+   One row per pair, with `a_id` always the lexicographically smaller of the two
+   ids. That ordering is doing real work: it makes a duplicate impossible by
+   construction rather than by checking. Two people who request each other at the
+   same moment collide on the primary key, and requesting somebody who has already
+   requested you *is* accepting them — the same shape as a simultaneous rematch,
+   which resolves for the same reason.
+   ─────────────────────────────────────────────────────────────────────────── */
+export const friendshipStatus = pgEnum("friendship_status", [
+  "pending",
+  "accepted",
+  "blocked",
+]);
+
+export const friendships = pgTable(
+  "friendships",
+  {
+    aId: text("a_id")
+      .notNull()
+      .references(() => players.clerkUserId, { onDelete: "cascade" }),
+    bId: text("b_id")
+      .notNull()
+      .references(() => players.clerkUserId, { onDelete: "cascade" }),
+    status: friendshipStatus("status").notNull().default("pending"),
+    /** Who asked, or — when the status is `blocked` — who blocked. Without it the
+     *  row cannot say whether a request is yours to answer or theirs to wait on, and
+     *  a block would be symmetrical when it is anything but. */
+    actedBy: text("acted_by").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.aId, table.bId] }),
+    index("friendships_b_idx").on(table.bId, table.status),
+  ],
+);
+
+/** In-game chat. Append-only, one row per message, and the id is the cursor the
+ *  event stream advertises — the same relationship `moves.seq` has to the board. */
+export const messages = pgTable(
+  "messages",
+  {
+    id: serial("id").primaryKey(),
+    gameId: text("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    seat: text("seat", { enum: ["white", "black"] }).notNull(),
+    body: text("body").notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("messages_game_idx").on(table.gameId, table.id)],
+);
+
 export type Player = typeof players.$inferSelect;
 export type Game = typeof games.$inferSelect;
 export type Move = typeof moves.$inferSelect;
+export type PlayedGame = typeof playedGames.$inferSelect;
+export type Friendship = typeof friendships.$inferSelect;
+export type ChatMessage = typeof messages.$inferSelect;

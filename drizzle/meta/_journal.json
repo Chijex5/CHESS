@@ -22,6 +22,13 @@
       "when": 1788822086949,
       "tag": "0002_square_iceman",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788823819930,
+      "tag": "0003_hot_natasha_romanoff",
+      "breakpoints": true
     }
   ]
 }

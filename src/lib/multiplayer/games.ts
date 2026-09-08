@@ -4,6 +4,7 @@ import { db } from "@/lib/db/client";
 import { games, moves, offers, players, type Game } from "@/lib/db/schema";
 import { applyGame, type Rating } from "@/lib/game/rating";
 import { publishChange } from "@/lib/realtime/bus";
+import { archiveFinished } from "./archive";
 import { gameId as newGameId } from "./ids";
 import { publicPlayer } from "./players";
 import {
@@ -384,6 +385,12 @@ export async function finish(
         .where(eq(games.id, id));
     }
   }
+
+  /* After the ratings, so the archived row can say what the opponent was rated when
+     you played them rather than what the game left them on. Awaited rather than fired
+     and forgotten: on a serverless function the request may be frozen the moment this
+     one returns, and a dropped write here is a game missing from a history page. */
+  await archiveFinished(closed, winner, ending, ratings);
 
   await publishChange(id, -1);
   return { ratings };

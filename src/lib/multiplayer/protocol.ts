@@ -11,16 +11,10 @@
 
 export type Seat = "white" | "black";
 export type GameWinner = "white" | "black" | "draw";
-export type GameEnding =
-  | "checkmate"
-  | "resignation"
-  | "timeout"
-  | "stalemate"
-  | "insufficient-material"
-  | "threefold"
-  | "fifty-move"
-  | "agreement"
-  | "abandoned";
+/* One definition, in `chess/types`, because an engine game ends for the same reasons.
+   Re-exported so every existing importer of the protocol keeps working. */
+export type { GameEnding } from "@/lib/chess/types";
+import type { GameEnding } from "@/lib/chess/types";
 
 export function opposite(seat: Seat): Seat {
   return seat === "white" ? "black" : "white";

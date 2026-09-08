@@ -14,12 +14,16 @@ import {
 import { useHint } from "@/lib/store/hint-store";
 import { useClock } from "@/lib/store/clock-store";
 import { timeControlFor } from "./time-controls";
+import { opponentFor } from "@/lib/engine/opponents";
+import { gameId as newGameId } from "@/lib/multiplayer/ids";
+import { saveFinishedGame } from "@/lib/archive/working-set";
 import { classify, evalToWinPct } from "@/lib/chess/eval";
 import { splitUci, uciLineToSan, uciOf, uciToSan } from "./notation";
 import { requestExplanation, requestHintReason } from "@/lib/coach/client";
 import { cueForMove, playCue } from "@/lib/audio/sfx";
 import type {
   Evaluation,
+  GameEnding,
   GameResult,
   PieceColor,
   PieceType,
@@ -67,16 +71,22 @@ function resultOf(board: Chess, playerColor: PieceColor): GameResult | null {
       outcome: `${loser === "w" ? "White" : "Black"} is checkmated`,
       detail: `${loser === "w" ? "Black" : "White"} wins · move ${moveNumber}`,
       playerWon,
+      ending: "checkmate",
     };
   }
-  const reason = board.isStalemate()
-    ? "Stalemate"
+  const [reason, ending]: [string, GameEnding] = board.isStalemate()
+    ? ["Stalemate", "stalemate"]
     : board.isInsufficientMaterial()
-      ? "Insufficient material"
+      ? ["Insufficient material", "insufficient-material"]
       : board.isThreefoldRepetition()
-        ? "Threefold repetition"
-        : "Fifty-move rule";
-  return { outcome: "Draw", detail: `${reason} · move ${moveNumber}`, playerWon: null };
+        ? ["Threefold repetition", "threefold"]
+        : ["Fifty-move rule", "fifty-move"];
+  return {
+    outcome: "Draw",
+    detail: `${reason} · move ${moveNumber}`,
+    playerWon: null,
+    ending,
+  };
 }
 
 /** The chord a finished game ends on, from the player's point of view. */
@@ -276,6 +286,57 @@ async function flushDeferred() {
   const owed = deferred;
   deferred = [];
   for (const record of owed) await judgeAndExplain(record);
+  /* The second of a finished game's two saves — the one that carries the accuracy, the
+     quality tally and the weaknesses, none of which existed when the result landed.
+     `flushDeferred` also runs mid-game for `after-reply` timing, hence the guard. */
+  if (useGame.getState().status === "over") void archiveNow();
+}
+
+/* The id an engine game is archived under. Generated when the game starts rather than
+   when it ends, so the two saves a game makes agree on where they are going — and
+   generated at all because an engine game has no server and therefore no id from one. */
+let engineGameId: string | null = null;
+
+/**
+ * Files the game currently in the stores.
+ *
+ * Called at every point a game can end and again once the coach has finished, which is
+ * five call sites for one upsert. That is deliberate: the alternative was one call at
+ * the end of the analysis, and a player who closes the tab while the notes are still
+ * streaming would have lost the game entirely rather than kept it marked unanalysed.
+ *
+ * Never awaited by a caller. A failed write costs a history row, and nothing about
+ * finishing a game should wait on it.
+ */
+async function archiveNow(): Promise<void> {
+  const game = useGame.getState();
+  if (!game.result) return;
+  /* An online game reviewed locally is already in the archive — the server filed it
+     when it ended, from what it knew — and its facts (who, what clock, whether it
+     counted) are the server's to state. `/g/[id]/analyse` upserts the analysis. */
+  if (game.reviewGameId) return;
+
+  const settings = useSettings.getState();
+  const control = timeControlFor(settings.timeControl);
+  const opponent = opponentFor(settings.elo);
+  engineGameId ??= newGameId();
+
+  try {
+    await saveFinishedGame({
+      id: engineGameId,
+      source: "engine",
+      /* Named, with the strength that produced it: "Karpov · 1600" still means
+         something in a history list two months later, where "Stockfish" would not. */
+      opponent: `${opponent.name} · ${settings.elo}`,
+      opponentRating: settings.elo,
+      ending: game.result.ending ?? null,
+      initialMs: control.initialMs,
+      incrementMs: control.incrementMs,
+      rated: false,
+    });
+  } catch {
+    // History is a convenience; losing a row must not surface as a game-over error.
+  }
 }
 
 let starting = false;
@@ -285,6 +346,7 @@ export async function startGame() {
   // would leave one of them orphaned mid-handshake.
   if (starting) return;
   starting = true;
+  engineGameId = null;
   const settings = useSettings.getState();
   const playerColor: PieceColor =
     settings.side === "random" ? (Math.random() < 0.5 ? "w" : "b") : settings.side === "white" ? "w" : "b";
@@ -434,6 +496,7 @@ export async function playMove(
     useClock.getState().stop();
     useGame.getState().patch({ status: "over", result });
     playCue(outcomeCue(result));
+    void archiveNow();
     deferred.push(record);
     void finishAnalysis(record);
     return true;
@@ -477,7 +540,10 @@ async function engineReply() {
     if (outcome) useClock.getState().stop();
     else useClock.getState().handOver(record.side === "white" ? "black" : "white");
     game.patch({ status: outcome ? "over" : "playing", result: outcome });
-    if (outcome) playCue(outcomeCue(outcome));
+    if (outcome) {
+      playCue(outcomeCue(outcome));
+      void archiveNow();
+    }
     await analyse(record.ply, record.fenAfter, true);
 
     /* The reply is on the board, so a note written now describes the position in
@@ -535,9 +601,11 @@ export function resign() {
         game.plies.length / 2,
       )}`,
       playerWon: false,
+      ending: "resignation",
     },
   });
   // The game is over, so anything `after-reply` or `post-game` was holding is due.
+  void archiveNow();
   void flushDeferred();
 }
 
@@ -558,8 +626,10 @@ export function flagFall(side: Side) {
         game.plies.length / 2,
       )}`,
       playerWon,
+      ending: "timeout",
     },
   });
+  void archiveNow();
   void flushDeferred();
 }
 
