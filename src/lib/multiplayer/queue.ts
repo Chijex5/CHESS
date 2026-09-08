@@ -29,6 +29,8 @@ const MATCH_TTL_SECONDS = 120;
  *  leaving, a laptop that slept. The client beats every 2s, so this is many missed
  *  beats rather than a marginal call. */
 const STALE_MS = 20_000;
+/** Give a real person a brief chance to arrive before filling an empty queue. */
+export const ENGINE_FALLBACK_AFTER_MS = 8_000;
 
 let client: Promise<RedisClientType> | null = null;
 
@@ -140,6 +142,13 @@ export async function dequeue(control: TimeControlId, userId: string): Promise<v
   if (!connection) return;
   const existing = await findEntry(control, userId);
   if (existing) await connection.zRem(key(control), encodeEntry(existing));
+}
+
+/** How long this player has actually waited. Kept server-side so a reloaded tab
+ * cannot skip the real-player grace period. */
+export async function waitedInQueue(control: TimeControlId, userId: string): Promise<number> {
+  const entry = await findEntry(control, userId);
+  return entry ? Math.max(0, Date.now() - entry.joinedAt) : 0;
 }
 
 async function findEntry(

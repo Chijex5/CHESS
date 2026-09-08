@@ -65,6 +65,7 @@ export async function createPairedGame(options: {
   initialMs: number;
   incrementMs: number;
   rated: boolean;
+  engineElo?: number | null;
 }): Promise<string> {
   const id = newGameId();
   const startedAt = new Date();
@@ -75,8 +76,46 @@ export async function createPairedGame(options: {
     initialMs: options.initialMs,
     incrementMs: options.incrementMs,
     rated: options.rated ? 1 : 0,
+    engineElo: options.engineElo ?? null,
     status: "active",
     startedAt,
+  });
+  await publishChange(id, 0);
+  return id;
+}
+
+const BOT_NAMES = ["RiverKnight", "QuietBishop", "SilverPawn", "NorthStar", "AmberRook"];
+
+/** Creates a per-game, human-looking opponent. It is intentionally unrated: an
+ * invented identity must never move a real player's competitive rating. */
+export async function createEngineFallbackGame(options: {
+  playerId: string;
+  rating: number;
+  initialMs: number;
+  incrementMs: number;
+}): Promise<string> {
+  const id = newGameId();
+  const engineElo = Math.max(1320, Math.min(3190, Math.round(options.rating + (Math.floor(Math.random() * 41) - 20))));
+  const botId = `engine:${id}`;
+  const username = `${BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)]}${Math.floor(100 + Math.random() * 900)}`;
+  await db.insert(players).values({
+    clerkUserId: botId,
+    username,
+    rating: engineElo,
+    rd: 80,
+    volatility: 0.06,
+  });
+  const humanWhite = Math.random() < 0.5;
+  await db.insert(games).values({
+    id,
+    whiteId: humanWhite ? options.playerId : botId,
+    blackId: humanWhite ? botId : options.playerId,
+    initialMs: options.initialMs,
+    incrementMs: options.incrementMs,
+    rated: 0,
+    engineElo,
+    status: "active",
+    startedAt: new Date(),
   });
   await publishChange(id, 0);
   return id;
@@ -155,6 +194,11 @@ async function moveRows(id: string) {
   return db.select().from(moves).where(eq(moves.gameId, id)).orderBy(asc(moves.seq));
 }
 
+/** The offer policy needs the authoritative position too; never trust a client FEN. */
+export async function moveRowsForGame(id: string) {
+  return moveRows(id);
+}
+
 function toStored(row: Awaited<ReturnType<typeof moveRows>>[number]): StoredMove {
   return {
     seq: row.seq,
@@ -230,6 +274,7 @@ export async function snapshot(id: string, userId: string | null): Promise<GameS
     rematchId: game.rematchId,
     chatSeq,
     rated: game.rated === 1,
+    engineElo: game.engineElo,
     ratings:
       game.whiteRatingAfter !== null && game.blackRatingAfter !== null
         ? {
@@ -369,6 +414,23 @@ export async function submitMove(
   return { ok: true, seq: verdict.seq, san: verdict.san };
 }
 
+/** A queue fallback may only be advanced by its human opponent, but the move is
+ * adjudicated as the synthetic seat so all normal clock and legality rules apply. */
+export async function submitEngineMove(
+  id: string,
+  userId: string,
+  request: MoveRequest,
+): Promise<SubmitResult> {
+  const game = await gameRow(id);
+  if (!game || game.engineElo === null) {
+    return { ok: false, reason: "not-an-engine-game", status: 404 };
+  }
+  const botId = game.whiteId?.startsWith("engine:") ? game.whiteId : game.blackId;
+  const humanId = botId === game.whiteId ? game.blackId : game.whiteId;
+  if (!botId || humanId !== userId) return { ok: false, reason: "not-a-player", status: 403 };
+  return submitMove(id, botId, request);
+}
+
 /**
  * Records the result, once.
  *
@@ -497,6 +559,21 @@ export async function offerRematch(id: string, userId: string): Promise<RematchR
 
   // Already agreed: hand back where to go rather than opening a second negotiation.
   if (game.rematchId) return { ok: true, rematchId: game.rematchId };
+  /* There is no second browser to wait for. The fallback accepts immediately and
+     * preserves its hidden strength while colours swap. */
+  if (game.engineElo !== null && game.whiteId && game.blackId) {
+    const rematchId = await createPairedGame({
+      white: game.blackId,
+      black: game.whiteId,
+      initialMs: game.initialMs,
+      incrementMs: game.incrementMs,
+      rated: false,
+      engineElo: game.engineElo,
+    });
+    await db.update(games).set({ rematchId }).where(and(eq(games.id, id), isNull(games.rematchId)));
+    await publishChange(id, -3);
+    return { ok: true, rematchId };
+  }
 
   /* If the opponent has already offered, offering back *is* accepting. Without this,
      two players who both press Rematch in the same second would each be waiting for

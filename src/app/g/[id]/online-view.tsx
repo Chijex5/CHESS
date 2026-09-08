@@ -24,7 +24,8 @@ import { InvitePanel } from "./invite-panel";
 import { MoveList } from "@/components/game/move-list";
 import { ChatPanel, ChatTabLabel, MobileChat } from "@/components/game/chat-panel";
 import { useOnline } from "@/lib/store/online-store";
-import { connect, joinGame, sendOffer } from "@/lib/multiplayer/client";
+import { connect, joinGame, sendEngineMove, sendOffer } from "@/lib/multiplayer/client";
+import { getOpponent, setOpponentElo } from "@/lib/engine/manager";
 import {
   boardFor,
   isMyTurn,
@@ -147,6 +148,26 @@ export function OnlineView({ gameId }: { gameId: string }) {
   const theirSeat = opposite(mySeat);
   const turn = snapshot ? turnOf(snapshot, pending) : "white";
   const myTurn = isMyTurn(snapshot, pending);
+
+  /* A fallback keeps the online presentation, but its move is generated locally just
+   * like a normal engine game. No evaluation or suggestion is surfaced here. */
+  const engineThinking = useRef(false);
+  useEffect(() => {
+    if (!snapshot?.engineElo || snapshot.status !== "active" || myTurn || engineThinking.current) return;
+    const engineElo = snapshot.engineElo;
+    // The generated username never exposes the synthetic id, so use the player's
+    // seat: whenever it is not ours, it is the fallback engine's turn.
+    if (turn !== opposite(snapshot.seat ?? "white")) return;
+    engineThinking.current = true;
+    const timer = window.setTimeout(() => {
+      void setOpponentElo(engineElo).then(() => getOpponent(engineElo).search({ fen, movetimeMs: 650 })).then((result) => {
+        if (!result.bestMove) return;
+        const [from, to, promotion] = [result.bestMove.slice(0, 2), result.bestMove.slice(2, 4), result.bestMove[4]];
+        return sendEngineMove(snapshot.id, { from, to, promotion, seq: snapshot.seq + 1 });
+      }).finally(() => { engineThinking.current = false; });
+    }, 450);
+    return () => { window.clearTimeout(timer); engineThinking.current = false; };
+  }, [fen, myTurn, snapshot, turn]);
 
   const rows = useMemo(() => {
     const history = board.history({ verbose: true });

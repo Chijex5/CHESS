@@ -96,6 +96,10 @@ export const games = pgTable(
      *  Only these affect rating — a game against a friend you invited is not
      *  evidence about your strength. */
     rated: integer("rated").notNull().default(0),
+    /** A queue fallback is played by the browser's Stockfish worker, while retaining
+     * the online board and archive shape. Its strength is game metadata, not
+     * a rating result against a fabricated account. */
+    engineElo: integer("engine_elo"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     startedAt: timestamp("started_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),
