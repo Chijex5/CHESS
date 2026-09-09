@@ -14,6 +14,7 @@ import {
 } from "./bot";
 import { gameId as newGameId } from "./ids";
 import { publicPlayer } from "./players";
+import { canUseDeveloperAssistance } from "./developer-assistance";
 import {
   endingOf,
   flagged,
@@ -309,6 +310,12 @@ export async function snapshot(id: string, userId: string | null): Promise<GameS
     rematchId: game.rematchId,
     chatSeq,
     rated: game.rated === 1,
+    canUseDeveloperAssistance: canUseDeveloperAssistance({
+      userId,
+      whiteId: game.whiteId,
+      blackId: game.blackId,
+      status: game.status,
+    }),
     engineElo: game.engineElo,
     ratings:
       game.whiteRatingAfter !== null && game.blackRatingAfter !== null

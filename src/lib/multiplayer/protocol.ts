@@ -63,6 +63,8 @@ export type GameSnapshot = {
    *  cursor is behind fetches the difference. */
   chatSeq: number;
   rated: boolean;
+  /** Server-authorized, account-specific live hints and coach explanations. */
+  canUseDeveloperAssistance?: boolean;
   /** Present only for a queue fallback. The UI deliberately remains the online UI;
    * this lets its owner drive the engine's turn without granting engine help. */
   engineElo?: number | null;
