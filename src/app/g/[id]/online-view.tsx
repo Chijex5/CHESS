@@ -16,7 +16,10 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ChessBoard } from "@/components/board/chess-board";
+import type { BoardArrow } from "@/components/board/board-arrows";
+import { HintControls } from "@/components/board/hint-controls";
 import { PromotionPicker } from "@/components/board/promotion-picker";
+import { HintCard } from "@/components/coach/hint-card";
 import { OpponentStrip } from "@/components/game/opponent-strip";
 import { OnlineOverDialog } from "@/components/game/online-over-dialog";
 import { RematchControls } from "@/components/game/rematch-controls";
@@ -25,7 +28,7 @@ import { MoveList } from "@/components/game/move-list";
 import { ChatPanel, ChatTabLabel, MobileChat } from "@/components/game/chat-panel";
 import { useOnline } from "@/lib/store/online-store";
 import { connect, joinGame, sendEngineMove, sendOffer } from "@/lib/multiplayer/client";
-import { getOpponent, setOpponentElo } from "@/lib/engine/manager";
+import { getAnalyst, getOpponent, setOpponentElo } from "@/lib/engine/manager";
 import {
   boardFor,
   isMyTurn,
@@ -37,8 +40,12 @@ import { opposite, type Seat } from "@/lib/multiplayer/protocol";
 import { useRematchPhase } from "@/lib/multiplayer/use-rematch-phase";
 import { capturedFrom, parseFen, squareToIndex } from "@/lib/chess/fen";
 import { useSettings } from "@/lib/store/settings-store";
+import { useHint } from "@/lib/store/hint-store";
 import { playCue } from "@/lib/audio/sfx";
+import { requestHintReason } from "@/lib/coach/client";
+import { splitUci, uciToSan } from "@/lib/game/notation";
 import type { PieceType, Square } from "@/lib/chess/types";
+import type { HintStage } from "@/lib/store/game-store";
 
 /* ── The online board ─────────────────────────────────────────────────────────
    Everything the engine game shows that would be engine help is simply absent:
@@ -55,11 +62,19 @@ export function OnlineView({ gameId }: { gameId: string }) {
   const pending = useOnline((state) => state.pending);
   const connection = useOnline((state) => state.connection);
   const rejection = useOnline((state) => state.rejection);
+  const settings = useSettings();
+  const hint = useHint();
 
   const [selected, setSelected] = useState<Square | null>(null);
   const [promotion, setPromotion] = useState<{ from: Square; to: Square } | null>(null);
   const [needsAuth, setNeedsAuth] = useState(false);
   const [rail, setRail] = useState<"moves" | "chat">("moves");
+  const [hintStage, setHintStage] = useState<{ position: string; stage: HintStage }>({
+    position: "",
+    stage: 0,
+  });
+  const [bestHint, setBestHint] = useState<{ position: string; uci: string; san: string } | null>(null);
+  const [hintThinking, setHintThinking] = useState(false);
   /* Whether the seat-claiming POST has been sent, held in a ref rather than state:
      nothing renders differently for it, and as state it would make the effect below
      set state synchronously and cascade a render. */
@@ -148,6 +163,65 @@ export function OnlineView({ gameId }: { gameId: string }) {
   const theirSeat = opposite(mySeat);
   const turn = snapshot ? turnOf(snapshot, pending) : "white";
   const myTurn = isMyTurn(snapshot, pending);
+  const developerAssistance = Boolean(snapshot?.canUseDeveloperAssistance);
+
+  /* The analyst is intentionally started only after the server has granted this
+     account the capability. It is separate from the fallback opponent worker, so a
+     hint search never weakens or delays that opponent's move. */
+  useEffect(() => {
+    useHint.getState().clear();
+    if (!developerAssistance || !myTurn || status !== "active") return;
+
+    let current = true;
+    void (async () => {
+      // Starting asynchronously avoids an effect-time render cascade while still
+      // making the loading state visible before Stockfish has returned a move.
+      await Promise.resolve();
+      if (!current) return;
+      setHintThinking(true);
+      const result = await getAnalyst().search({ fen, movetimeMs: 500 });
+      if (current && result.bestMove) {
+        const san = uciToSan(fen, result.bestMove);
+        if (san) setBestHint({ position: fen, uci: result.bestMove, san });
+      }
+      if (current) setHintThinking(false);
+    })();
+    return () => {
+      current = false;
+    };
+  }, [developerAssistance, fen, myTurn, snapshot?.id, snapshot?.seq, status]);
+
+  const liveBestHint = bestHint?.position === fen ? bestHint : null;
+  const liveHintStage = hintStage.position === fen ? hintStage.stage : 0;
+  const hintFrom = liveHintStage >= 1 && liveBestHint ? splitUci(liveBestHint.uci).from : null;
+  const hintArrows = useMemo<BoardArrow[]>(
+    () => (liveHintStage >= 2 && liveBestHint ? [{ ...splitUci(liveBestHint.uci), kind: "hint" }] : []),
+    [liveBestHint, liveHintStage],
+  );
+
+  const revealHint = () => {
+    if (!liveBestHint) return;
+    setHintStage((current) => ({
+      position: fen,
+      stage: Math.min(2, current.position === fen ? current.stage + 1 : 1) as HintStage,
+    }));
+  };
+
+  const explainHint = () => {
+    if (!liveBestHint || !snapshot) return;
+    setHintStage({ position: fen, stage: 2 });
+    void requestHintReason(
+      {
+        ply: snapshot.seq,
+        fen,
+        bestSan: liveBestHint.san,
+        side: board.turn() === "w" ? "white" : "black",
+      },
+      settings,
+      new AbortController().signal,
+      snapshot.id,
+    );
+  };
 
   /* A fallback keeps the online presentation, but its move is generated locally just
    * like a normal engine game. No evaluation or suggestion is surfaced here. */
@@ -258,6 +332,8 @@ export function OnlineView({ gameId }: { gameId: string }) {
                   flipped={flipped}
                   lastMove={lastMoveOf(board)}
                   checkSquare={checkSquareOf(board)}
+                  hintSquare={hintFrom}
+                  arrows={hintArrows}
                   selected={selected}
                   legalMoves={legal}
                   interactive={myTurn}
@@ -304,6 +380,27 @@ export function OnlineView({ gameId }: { gameId: string }) {
             />
 
             <StatusLine gameId={gameId} rejection={rejection} />
+            {developerAssistance && (
+              <div className="flex shrink-0 items-center justify-between gap-2">
+                <HintControls
+                  stage={liveHintStage}
+                  available={Boolean(liveBestHint)}
+                  thinking={hintThinking}
+                  explaining={hint.stage === "streaming"}
+                  onReveal={revealHint}
+                  onExplain={explainHint}
+                />
+                <span className="text-2xs text-muted-foreground">Developer assistance</span>
+              </div>
+            )}
+            {developerAssistance && liveBestHint && hint.ply === snapshot.seq && (
+              <HintCard
+                move={liveBestHint.san}
+                stage={hint.stage}
+                prose={hint.prose}
+                concepts={hint.concepts}
+              />
+            )}
           </div>
         </main>
 
