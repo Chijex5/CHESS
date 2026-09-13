@@ -5,8 +5,10 @@ import {
   claimMatch,
   dequeue,
   enqueue,
+  isReserved,
   publishMatch,
   queueDepth,
+  releasePair,
   tryPair,
   waitedInQueue,
 } from "@/lib/multiplayer/queue";
@@ -56,6 +58,17 @@ export async function POST(request: Request) {
   });
 
   if (!pair) {
+    /* A player whose pairing is mid-flight has not been waiting — they have been
+       matched, and the game is being written. Without this check the fallback would
+       hand them a second game against the engine while a real opponent sat in the
+       first one. */
+    if (await isReserved(player.id)) {
+      return NextResponse.json({
+        status: "waiting",
+        waiting: await queueDepth(controlId),
+      });
+    }
+
     if ((await waitedInQueue(controlId, player.id)) >= ENGINE_FALLBACK_AFTER_MS) {
       await dequeue(controlId, player.id);
       const gameId = await createEngineFallbackGame({
@@ -87,6 +100,10 @@ export async function POST(request: Request) {
   /* The other player learns about it by polling; ours is collected here rather than
      left for a poll we might not make. */
   await publishMatch(pair.a === player.id ? pair.b : pair.a, gameId);
+
+  /* Released only now. Between `tryPair` and this line the pair is locked, which is
+     the window a 2s heartbeat used to slip through to pair them a second time. */
+  await releasePair(pair.a, pair.b);
 
   return NextResponse.json({ status: "matched", gameId });
 }
