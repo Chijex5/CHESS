@@ -258,7 +258,7 @@ export function MobileChat({ gameId }: { gameId: string }) {
               setOpen(true);
               useOnline.getState().markChatRead();
             }}
-            className="absolute end-0 bottom-full z-30 mb-2 w-[min(18rem,80vw)] animate-in fade-in-0 slide-in-from-bottom-2 rounded-xl border bg-popover px-3 py-2 text-start shadow-lg"
+            className="absolute end-0 bottom-full z-30 mb-2 w-[min(18rem,80vw)] animate-in fade-in-0 slide-in-from-bottom-2 rounded-xl border bg-muted px-3 py-2 text-start shadow-lg"
           >
             {opponent && (
               <span className="block truncate text-2xs font-medium text-muted-foreground">
@@ -269,7 +269,7 @@ export function MobileChat({ gameId }: { gameId: string }) {
             {/* The caret, pointing at the button that opens the rest. */}
             <span
               aria-hidden
-              className="absolute end-4 top-full size-2 -translate-y-1 rotate-45 border-e border-b bg-popover"
+              className="absolute end-4 top-full size-2 -translate-y-1 rotate-45 border-e border-b bg-muted"
             />
           </button>
         )}

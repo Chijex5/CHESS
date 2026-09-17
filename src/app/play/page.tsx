@@ -1,10 +1,10 @@
-import { AppHeader } from "@/components/shell/app-header";
+import { GameHeader } from "@/components/shell/game-header";
 import { PlayView } from "@/components/game/play-view";
 
 export default function PlayPage() {
   return (
     <>
-      <AppHeader />
+      <GameHeader label="Play the engine" />
       <PlayView />
     </>
   );

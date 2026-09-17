@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, BookOpen, Eye, TriangleAlert } from "lucide-react";
-import { AppHeader } from "@/components/shell/app-header";
+import { AppShell } from "@/components/shell/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChessBoard } from "@/components/board/chess-board";
@@ -37,8 +37,7 @@ export default async function ConceptPage({ params }: PageProps<"/concepts/[slug
     : null;
 
   return (
-    <>
-      <AppHeader />
+    <AppShell>
       <main className="mx-auto w-full max-w-[52rem] flex-1 px-3 py-6 sm:px-5">
         <Button asChild variant="ghost" size="sm" className="mb-4 -ms-2 h-8 text-xs">
           <Link href="/concepts">
@@ -103,7 +102,7 @@ export default async function ConceptPage({ params }: PageProps<"/concepts/[slug
         <ConceptSightings slug={slug} />
         <ConceptDrills slug={slug} />
       </main>
-    </>
+    </AppShell>
   );
 }
 
