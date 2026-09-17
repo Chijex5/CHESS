@@ -32,6 +32,11 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
+  /* The on-screen keyboard shrinks the layout viewport rather than floating over it,
+     so a bottom sheet with an input in it ends up above the keys instead of behind
+     them. Chrome and Firefox honour this; iOS Safari does not, and gets the
+     `visualViewport` measurement in `use-keyboard-inset` instead. */
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

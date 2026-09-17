@@ -174,12 +174,19 @@ export const invites = pgTable(
 
 /** An offer one player has made and the other has not yet answered. One row per
  *  game at most — a second offer replaces the first, which is why the game id is
- *  the key rather than a serial. */
+ *  the key rather than a serial.
+ *
+ *  `rematch-declined` is the one value that is not an offer: it is the *answer* to
+ *  one, kept in the same row because a refusal has to survive long enough to reach
+ *  the person who asked. Deleting the row instead — which is what this did — left
+ *  their client unable to tell "they said no" from "nobody has asked yet", so the
+ *  offerer watched their own request quietly disappear. `offered_by` is the seat that
+ *  said no. The column is plain `text`, so this costs no migration. */
 export const offers = pgTable("offers", {
   gameId: text("game_id")
     .primaryKey()
     .references(() => games.id, { onDelete: "cascade" }),
-  kind: text("kind", { enum: ["draw", "rematch"] }).notNull(),
+  kind: text("kind", { enum: ["draw", "rematch", "rematch-declined"] }).notNull(),
   offeredBy: text("offered_by").notNull(),
   offeredAt: timestamp("offered_at", { withTimezone: true }).notNull().defaultNow(),
 });

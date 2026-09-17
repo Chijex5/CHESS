@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { BellOff, MessageSquare, Send, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import type { ChatLine } from "@/lib/multiplayer/chat";
+import type { Seat } from "@/lib/multiplayer/protocol";
 import {
   Sheet,
   SheetContent,
@@ -15,6 +17,7 @@ import { sendChat } from "@/lib/multiplayer/client";
 import { useOnline } from "@/lib/store/online-store";
 import { MAX_BODY } from "@/lib/multiplayer/chat";
 import { playCue } from "@/lib/audio/sfx";
+import { useKeyboardInset } from "@/lib/ui/use-keyboard-inset";
 
 /* ── Saying something ─────────────────────────────────────────────────────────
    Two people, no moderator, and therefore two controls that belong to the person
@@ -188,10 +191,42 @@ export function ChatTabLabel() {
  * phone would play its cue and then be unreachable — the worst of both, a notification
  * for something you cannot read. A sheet rather than a second layout: it is the same
  * component, given a full-height container.
+ *
+ * And a bubble. The cue and a six-pixel dot on a button were the whole announcement
+ * of a message, and on a phone with the board taking the screen that is nothing at
+ * all — people sent "good game" and were never answered. Now their newest line pops
+ * up over the board where you are already looking, for long enough to read and tap.
  */
+
+/** Long enough to read a sentence and decide; short enough not to sit over the board
+ *  through the next three moves. */
+const BUBBLE_MS = 6_000;
+
 export function MobileChat({ gameId }: { gameId: string }) {
   const unread = useOnline((state) => state.unread);
+  const chat = useOnline((state) => state.chat);
+  const seat = useOnline((state) => state.seat);
+  const muted = useOnline((state) => state.muted);
+  const snapshot = useOnline((state) => state.snapshot);
   const [open, setOpen] = useState(false);
+  const inset = useKeyboardInset();
+
+  /* The bubble shows the newest line that is theirs, unread, and not yet faded. The
+     first three conditions are the store's — the same ones that decide `unread` — and
+     the last is a fade timer keyed on the line's id, so a second message replaces the
+     first rather than stacking under it. */
+  const latest = lastTheirs(chat, seat);
+  const [faded, setFaded] = useState(0);
+  const bubble =
+    !open && !muted && unread > 0 && latest && latest.id > faded ? latest : null;
+  const bubbleId = bubble?.id ?? 0;
+  useEffect(() => {
+    if (!bubbleId) return;
+    const timer = setTimeout(() => setFaded(bubbleId), BUBBLE_MS);
+    return () => clearTimeout(timer);
+  }, [bubbleId]);
+
+  const opponent = seat && snapshot ? snapshot[opposite(seat)]?.username : null;
 
   return (
     <Sheet
@@ -201,23 +236,59 @@ export function MobileChat({ gameId }: { gameId: string }) {
         if (next) useOnline.getState().markChatRead();
       }}
     >
-      <SheetTrigger asChild>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 shrink-0 gap-1.5 text-xs lg:hidden"
-        >
-          <MessageSquare className="size-3.5" aria-hidden />
-          Chat
-          {unread > 0 && (
+      <span className="relative lg:hidden">
+        <SheetTrigger asChild>
+          <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1.5 text-xs">
+            <MessageSquare className="size-3.5" aria-hidden />
+            Chat
+            {unread > 0 && (
+              <span
+                className="size-1.5 rounded-full bg-primary"
+                aria-label={`${unread} unread`}
+              />
+            )}
+          </Button>
+        </SheetTrigger>
+
+        {bubble && (
+          <button
+            type="button"
+            onClick={() => {
+              setFaded(bubble.id);
+              setOpen(true);
+              useOnline.getState().markChatRead();
+            }}
+            className="absolute end-0 bottom-full z-30 mb-2 w-[min(18rem,80vw)] animate-in fade-in-0 slide-in-from-bottom-2 rounded-xl border bg-popover px-3 py-2 text-start shadow-lg"
+          >
+            {opponent && (
+              <span className="block truncate text-2xs font-medium text-muted-foreground">
+                {opponent}
+              </span>
+            )}
+            <span className="line-clamp-2 text-sm break-words">{bubble.body}</span>
+            {/* The caret, pointing at the button that opens the rest. */}
             <span
-              className="size-1.5 rounded-full bg-primary"
-              aria-label={`${unread} unread`}
+              aria-hidden
+              className="absolute end-4 top-full size-2 -translate-y-1 rotate-45 border-e border-b bg-popover"
             />
-          )}
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="bottom" className="flex h-[70svh] flex-col p-0">
+          </button>
+        )}
+      </span>
+
+      {/* Two things about the height. The class needs the `data-[side=bottom]:` prefix
+          or the primitive's own `h-auto` outranks it (see `mobile-coach-dock`), which
+          had this sheet sizing to its contents. And where the keyboard slides over the
+          page instead of shrinking it — iOS — the sheet is lifted by the keyboard's
+          height and capped to what is left, so the input stays on screen. */}
+      <SheetContent
+        side="bottom"
+        className="flex flex-col p-0 data-[side=bottom]:h-[70svh]"
+        style={
+          inset
+            ? { bottom: inset, maxHeight: `calc(100svh - ${inset}px - 1rem)` }
+            : undefined
+        }
+      >
         <SheetHeader className="shrink-0 border-b px-3 py-2.5">
           <SheetTitle className="text-sm">Chat</SheetTitle>
         </SheetHeader>
@@ -226,3 +297,15 @@ export function MobileChat({ gameId }: { gameId: string }) {
     </Sheet>
   );
 }
+
+/** The newest line from the other chair, or null. */
+function lastTheirs(chat: ChatLine[], seat: Seat | null): ChatLine | null {
+  for (let i = chat.length - 1; i >= 0; i -= 1) {
+    if (chat[i].seat !== seat) return chat[i];
+  }
+  return null;
+}
+function opposite(seat: string) {
+  return seat === "white" ? "black" : "white";
+}
+

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
+  ClipboardList,
   Flag,
   Handshake,
   ListOrdered,
@@ -27,7 +28,9 @@ import { useOnline } from "@/lib/store/online-store";
 import { connect, joinGame, sendOffer } from "@/lib/multiplayer/client";
 import {
   boardFor,
+  checkSquareOf,
   isMyTurn,
+  lastMoveOf,
   legalFor,
   playOnline,
   turnOf,
@@ -35,6 +38,7 @@ import {
 import { opposite, type Seat } from "@/lib/multiplayer/protocol";
 import { useRematchPhase } from "@/lib/multiplayer/use-rematch-phase";
 import { capturedFrom, parseFen, squareToIndex } from "@/lib/chess/fen";
+import { sansToRows } from "@/lib/game/rows";
 import { useSettings } from "@/lib/store/settings-store";
 import { playCue } from "@/lib/audio/sfx";
 import type { PieceType, Square } from "@/lib/chess/types";
@@ -99,6 +103,23 @@ export function OnlineView({ gameId }: { gameId: string }) {
     if (sawWithout.current) router.push(`/g/${rematchId}`);
   }, [hasSnapshot, rematchId, router]);
 
+  /* The other way a negotiation ends. A refusal moves *both* players to the summary:
+     the one who said no goes from their own click (see `RematchControls`), and the one
+     who asked goes from here, when the answer comes down the stream. Same transition
+     rule as above — a game whose rematch was refused keeps saying so forever, and
+     opening it later from your history should show the board, not bounce you. */
+  const declined = snapshot?.rematchDeclinedBy ?? null;
+  const seated = Boolean(snapshot?.seat);
+  const sawUndeclined = useRef(false);
+  useEffect(() => {
+    if (!hasSnapshot) return;
+    if (!declined) {
+      sawUndeclined.current = true;
+      return;
+    }
+    if (sawUndeclined.current && seated) router.replace(`/g/${gameId}/summary`);
+  }, [hasSnapshot, declined, seated, gameId, router]);
+
   /* Opened on the transition, not on the state: coming back to a game you already
      saw the result of should not reopen the celebration. */
   const [showResult, setShowResult] = useState(false);
@@ -148,19 +169,9 @@ export function OnlineView({ gameId }: { gameId: string }) {
   const turn = snapshot ? turnOf(snapshot, pending) : "white";
   const myTurn = isMyTurn(snapshot, pending);
 
-  const rows = useMemo(() => {
-    const history = board.history({ verbose: true });
-    return history.reduce<
-      { moveNumber: number; white?: { ply: number; san: string }; black?: { ply: number; san: string } }[]
-    >((acc, move, index) => {
-      const ply = index + 1;
-      const entry = { ply, san: move.san };
-      if (move.color === "w") acc.push({ moveNumber: Math.ceil(ply / 2), white: entry });
-      else if (acc.length) acc[acc.length - 1].black = entry;
-      else acc.push({ moveNumber: Math.ceil(ply / 2), black: entry });
-      return acc;
-    }, []);
-  }, [board]);
+  /* From the board rather than the snapshot, so a move you have just played and not
+     yet had confirmed is already in the list. */
+  const rows = useMemo(() => sansToRows(board.history()), [board]);
 
   const onSquareClick = (square: Square) => {
     if (!myTurn) return;
@@ -402,22 +413,6 @@ function needsPromotion(board: ReturnType<typeof boardFor>, from: string, to: st
   return to.endsWith(piece.color === "w" ? "8" : "1");
 }
 
-function lastMoveOf(board: ReturnType<typeof boardFor>) {
-  const last = board.history({ verbose: true }).at(-1);
-  return last ? { from: last.from, to: last.to } : null;
-}
-
-function checkSquareOf(board: ReturnType<typeof boardFor>) {
-  if (!board.inCheck()) return null;
-  const turn = board.turn();
-  for (const row of board.board()) {
-    for (const cell of row) {
-      if (cell?.type === "k" && cell.color === turn) return cell.square;
-    }
-  }
-  return null;
-}
-
 /* One row under the board, like the engine game's: whose move it is, an offer to
    answer, the result, or the last refusal — never more than one at a time. */
 function StatusLine({
@@ -466,8 +461,12 @@ function StatusLine({
             </Link>
           </Button>
         )}
+        {/* Summary rather than analysis: the summary is instant and analysis is one
+            press further along it. This row is already four controls wide on a phone. */}
         <Button asChild size="sm" variant="ghost" className="h-7 shrink-0 text-xs">
-          <Link href={`/g/${gameId}/analyse`}>Analyse</Link>
+          <Link href={`/g/${gameId}/summary`}>
+            <ClipboardList className="size-3.5" aria-hidden /> Summary
+          </Link>
         </Button>
         <Button asChild size="sm" variant="ghost" className="h-7 shrink-0 text-xs">
           <Link href="/play/friend">

@@ -43,6 +43,10 @@ function fingerprintOf(state: GameSnapshot): string {
        the page, so a snapshot that omitted it would strand the player who offered on a
        finished board while their opponent sat waiting in the new game. */
     state.rematchId ?? "",
+    // The other fact a client leaves the page on. A refusal replaces the offer rather
+    // than deleting it, so `offer` above going blank would already push — but "went
+    // blank" is also what a cancel looks like, and the two must not be the same event.
+    state.rematchDeclinedBy ?? "",
     // A message is a change a client renders, so it is a change the stream must push.
     state.chatSeq,
     /* Ratings land a moment after the result, in a second write. Without them here the
