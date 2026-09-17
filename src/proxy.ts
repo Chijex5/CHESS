@@ -43,7 +43,12 @@ export const config = {
   matcher: [
     // Skip Next.js internals and anything with a file extension, but do run on
     // everything else so a signed-in visitor is recognised on any page.
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|wasm|webmanifest)).*)",
+    //
+    // `monitoring` is Sentry's tunnel route (see `next.config.ts`). It carries error
+    // reports from the browser to Sentry through this origin so ad-blockers leave
+    // them alone, and it has no session of its own — running Clerk over it would
+    // authenticate a report about the failure instead of delivering it.
+    "/((?!_next|monitoring|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|wasm|webmanifest)).*)",
     "/(api|trpc)(.*)",
   ],
 };

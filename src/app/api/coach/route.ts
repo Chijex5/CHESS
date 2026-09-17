@@ -10,6 +10,11 @@ import {
   type Verbosity,
 } from "@/lib/coach/prompt";
 import type { Annotation, Side } from "@/lib/chess/types";
+import { ensurePlayer } from "@/lib/multiplayer/players";
+import { gameRow, moveRowsForGame } from "@/lib/multiplayer/games";
+import { normaliseGameId } from "@/lib/multiplayer/ids";
+import { replay } from "@/lib/multiplayer/rules";
+import { canUseDeveloperAssistance } from "@/lib/multiplayer/developer-assistance";
 
 export const maxDuration = 60;
 
@@ -26,6 +31,8 @@ type Body =
       side: Side;
       quality?: string;
       level?: Level;
+      /** Present only for a live developer-assisted online hint. */
+      onlineGameId?: string;
     };
 
 /* Newline-delimited JSON rather than the AI SDK's chat protocol: annotations are
@@ -60,6 +67,22 @@ export async function POST(request: Request) {
 
   if (body.kind === "hint") {
     if (!body.fen || !body.bestSan) return new Response("Missing position", { status: 400 });
+    if (body.onlineGameId) {
+      const player = await ensurePlayer();
+      const game = await gameRow(normaliseGameId(body.onlineGameId));
+      if (!player || !game || !canUseDeveloperAssistance({
+        userId: player.id,
+        whiteId: game.whiteId,
+        blackId: game.blackId,
+        status: game.status,
+      })) {
+        return new Response("Developer assistance is not available", { status: 403 });
+      }
+      const rows = await moveRowsForGame(game.id);
+      if (replay(rows.map((row) => row.san)).board.fen() !== body.fen) {
+        return new Response("Position is out of date", { status: 409 });
+      }
+    }
     job = { hint: true, fen: body.fen, bestSan: body.bestSan, side: body.side };
   } else {
     if (!body.annotation?.fenBefore || !body.annotation?.playedSan) {

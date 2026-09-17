@@ -3,6 +3,7 @@ import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { moves, playedGames, players } from "@/lib/db/schema";
 import type { Game } from "@/lib/db/schema";
+import { isHouse } from "./bot";
 import type { GameEnding, GameWinner, Seat } from "./protocol";
 
 /* ── Filing a finished online game ────────────────────────────────────────────
@@ -62,7 +63,13 @@ export async function archiveFinished(
   /* One row per player, each phrased from their own chair. Storing it once with a
      winner would push "which side was I?" into every aggregate that ever reads it. */
   await Promise.all(
-    seats.map(({ seat, ownerId, opponent }) =>
+    seats
+      /* The engine keeps no history. One row is shared by every fallback game, so a
+         `played_games` row under it would accumulate a record belonging to nobody — and
+         `owner_id` has a foreign key to `players`, so it would be a real row in a real
+         statistics query. The human's row is written as normal. */
+      .filter(({ ownerId }) => !isHouse(ownerId))
+      .map(({ seat, ownerId, opponent }) =>
       db
         .insert(playedGames)
         .values({
@@ -92,6 +99,6 @@ export async function archiveFinished(
         .onConflictDoNothing({
           target: [playedGames.ownerId, playedGames.gameId],
         }),
-    ),
+      ),
   );
 }

@@ -7,11 +7,12 @@ import {
   declineRematch,
   finish,
   gameRow,
+  moveRowsForGame,
   offerRematch,
 } from "@/lib/multiplayer/games";
 import { ensurePlayer } from "@/lib/multiplayer/players";
 import { normaliseGameId } from "@/lib/multiplayer/ids";
-import { resignResult } from "@/lib/multiplayer/rules";
+import { replay, resignResult } from "@/lib/multiplayer/rules";
 import { publishChange } from "@/lib/realtime/bus";
 import type { Seat } from "@/lib/multiplayer/protocol";
 
@@ -81,6 +82,16 @@ export async function POST(
     }
 
     case "offer-draw": {
+      if (game.engineElo !== null) {
+        /* The silent opponent accepts only positions the player is materially ahead
+           in. It otherwise declines by clearing the proposal — no fake chat reply. */
+        const board = replay((await moveRowsForGame(id)).map((move) => move.san)).board;
+        const values: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+        const edge = board.board().flat().reduce((sum, piece) => sum + (piece ? (piece.color === (seat === "white" ? "w" : "b") ? values[piece.type] : -values[piece.type]) : 0), 0);
+        if (edge > 0) await finish(id, "draw", "agreement");
+        else await publishChange(id, -2);
+        return NextResponse.json({ ok: true });
+      }
       /* Keyed by game, so offering twice replaces rather than accumulates and there
          is never a queue of stale offers to reason about. */
       await db

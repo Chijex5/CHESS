@@ -128,6 +128,15 @@ export async function sendMove(
   return { ok: false, reason: body?.error ?? "rejected" };
 }
 
+export async function sendEngineMove(gameId: string, request: MoveRequest) {
+  const response = await timed(`/api/game/${gameId}/engine-move`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return response.ok;
+}
+
 /**
  * Connects the event stream and keeps it connected.
  *
