@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, BookOpen } from "lucide-react";
-import { AppHeader } from "@/components/shell/app-header";
+import { AppShell } from "@/components/shell/app-shell";
 import { CONCEPTS } from "@/lib/coach/concepts";
 import type { Concept } from "@/lib/chess/types";
 
@@ -23,8 +23,7 @@ const FAMILIES: { key: Concept["family"]; label: string; note: string }[] = [
 
 export default function ConceptsPage() {
   return (
-    <>
-      <AppHeader />
+    <AppShell>
       <main className="mx-auto w-full max-w-[70rem] flex-1 px-3 py-6 sm:px-5">
         <div className="mb-6 max-w-2xl">
           <h1 className="text-2xl font-semibold tracking-tight">Concepts</h1>
@@ -86,6 +85,6 @@ export default function ConceptsPage() {
           );
         })}
       </main>
-    </>
+    </AppShell>
   );
 }

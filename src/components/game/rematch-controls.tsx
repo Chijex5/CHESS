@@ -36,16 +36,34 @@ export function RematchControls({
   const [busy, setBusy] = useState(false);
 
   const act = async (action: string) => {
+    /* Read before the round trip: the snapshot that comes back will say "declined"
+       from both chairs, and by then this component no longer knows which one it sat in. */
+    const refusing = action === "decline-rematch" && phase === "received";
     setBusy(true);
     const result = await sendOffer(snapshot.id, action);
     setBusy(false);
+    if (!result.ok) return;
     /* The accepter learns where to go from its own response rather than waiting for
        the round trip through Redis and back down its event stream. The offerer has no
        response to read, and arrives via the snapshot — see `online-view`. */
-    if (result.ok && result.rematchId) router.push(`/g/${result.rematchId}`);
+    if (result.rematchId) {
+      router.push(`/g/${result.rematchId}`);
+      return;
+    }
+    /* Likewise the refuser: saying no is leaving, and the board view would move them
+       on the next snapshot anyway. Doing it here saves the wait. Cancelling your own
+       offer is the same action on the wire and means the opposite — stay put. */
+    if (refusing) router.replace(`/g/${snapshot.id}/summary`);
   };
 
-  if (phase === "unavailable" || phase === "expired" || phase === "agreed") return null;
+  if (
+    phase === "unavailable" ||
+    phase === "expired" ||
+    phase === "agreed" ||
+    phase === "declined"
+  ) {
+    return null;
+  }
 
   const stack = layout === "stack";
   const size = stack ? undefined : ("sm" as const);

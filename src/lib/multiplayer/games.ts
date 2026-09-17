@@ -273,12 +273,9 @@ export async function snapshot(id: string, userId: string | null): Promise<GameS
      the arithmetic itself. Sending both would mean projecting twice. */
   const banked = remaining(clock, last);
 
-  /* The house seat is drawn from this game rather than looked up: one row is shared by
-     every fallback game, so its username and rating say nothing about this one. The
-     name is on the game and the strength is `engineElo`. */
-  const [white, black, offer, chatSeq] = await Promise.all([
-    isHouse(game.whiteId) ? housePlayer(game) : game.whiteId ? playerRow(game.whiteId) : null,
-    isHouse(game.blackId) ? housePlayer(game) : game.blackId ? playerRow(game.blackId) : null,
+  const [white, black, { offer, rematchDeclinedBy }, chatSeq] = await Promise.all([
+    game.whiteId ? playerRow(game.whiteId) : null,
+    game.blackId ? playerRow(game.blackId) : null,
     openOffer(id),
     lastMessageId(id),
   ]);
@@ -308,6 +305,7 @@ export async function snapshot(id: string, userId: string | null): Promise<GameS
     offer,
     endedAt: game.endedAt?.getTime() ?? null,
     rematchId: game.rematchId,
+    rematchDeclinedBy,
     chatSeq,
     rated: game.rated === 1,
     canUseDeveloperAssistance: canUseDeveloperAssistance({
@@ -370,10 +368,18 @@ async function lastMessageId(id: string): Promise<number> {
   return row?.id ?? 0;
 }
 
-async function openOffer(id: string) {
+/** The offers row, split into the two facts a snapshot carries: an offer still
+ *  waiting for an answer, and a rematch that was answered no. One row holds either,
+ *  never both, and the wire keeps them apart so nothing reading `offer` has to know
+ *  that a refusal is stored in the same place. */
+async function openOffer(
+  id: string,
+): Promise<{ offer: GameSnapshot["offer"]; rematchDeclinedBy: Seat | null }> {
   const [row] = await db.select().from(offers).where(eq(offers.gameId, id));
-  if (!row) return null;
-  return { kind: row.kind, by: row.offeredBy as Seat };
+  if (!row) return { offer: null, rematchDeclinedBy: null };
+  const by = row.offeredBy as Seat;
+  if (row.kind === "rematch-declined") return { offer: null, rematchDeclinedBy: by };
+  return { offer: { kind: row.kind, by }, rematchDeclinedBy: null };
 }
 
 export type SubmitResult =
@@ -698,10 +704,32 @@ export async function acceptRematch(id: string, userId: string): Promise<Rematch
   return { ok: true, rematchId };
 }
 
+/**
+ * Withdraws or refuses a rematch — one action from the client, two meanings here.
+ *
+ * The same button sends this whether you are cancelling your own offer or turning
+ * down theirs, and the two must not be treated alike. Cancelling is a change of mind:
+ * the row goes and the board is back where it was, still offerable. Refusing is an
+ * answer, and an answer has to *reach* the person who asked: the row is replaced with
+ * the refusal rather than deleted, so their next snapshot says "no" instead of saying
+ * nothing, and both clients leave the board together.
+ */
 export async function declineRematch(id: string, userId: string): Promise<RematchResult> {
   const found = await rematchable(id, userId);
   if (!found.ok) return found;
-  await db.delete(offers).where(eq(offers.gameId, id));
+  const { seat } = found;
+
+  const [open] = await db.select().from(offers).where(eq(offers.gameId, id));
+  const refusing = open?.kind === "rematch" && open.offeredBy !== seat;
+
+  if (refusing) {
+    await db
+      .update(offers)
+      .set({ kind: "rematch-declined", offeredBy: seat, offeredAt: new Date() })
+      .where(eq(offers.gameId, id));
+  } else {
+    await db.delete(offers).where(eq(offers.gameId, id));
+  }
   await publishChange(id, -2);
   return { ok: true, rematchId: null };
 }

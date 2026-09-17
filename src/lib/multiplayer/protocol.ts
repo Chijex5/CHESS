@@ -57,6 +57,15 @@ export type GameSnapshot = {
   /** The game both players agreed to move to. Set once, when a rematch is accepted,
    *  and the only thing either client needs in order to arrive there together. */
   rematchId: string | null;
+  /** The seat that refused a rematch, or null.
+   *
+   *  A refusal has to be on the wire as its own fact. Deleting the offer row — which
+   *  is what a decline used to do — leaves both clients looking at a snapshot
+   *  identical to the one before anybody asked, so the player who offered is told
+   *  nothing: their "Rematch offered…" turns back into a button and they are left on
+   *  a finished board guessing. With this, both clients know the negotiation is over
+   *  and can leave together. */
+  rematchDeclinedBy: Seat | null;
   /** Id of the last chat message, or 0. A cursor rather than the messages themselves:
    *  the stream is a doorbell, and putting the last twenty lines in every snapshot
    *  would ride a few kilobytes of conversation along with every *move*. A client whose
@@ -120,6 +129,10 @@ export type RematchPhase =
   | "received"
   /** Agreed — `rematchId` says where. */
   | "agreed"
+  /** Answered, and the answer was no. Terminal: both players are done with this
+   *  board and go to the summary together. Distinct from "expired", which is nobody
+   *  answering, and from "idle", which is nobody having asked. */
+  | "declined"
   /** Too long has passed. Nothing more will be delivered on this game. */
   | "expired";
 
@@ -136,7 +149,14 @@ export type RematchPhase =
 export function rematchPhase(
   snapshot: Pick<
     GameSnapshot,
-    "status" | "seat" | "white" | "black" | "offer" | "endedAt" | "rematchId"
+    | "status"
+    | "seat"
+    | "white"
+    | "black"
+    | "offer"
+    | "endedAt"
+    | "rematchId"
+    | "rematchDeclinedBy"
   >,
   now: number,
 ): RematchPhase {
@@ -145,6 +165,12 @@ export function rematchPhase(
   // has nothing to rematch.
   if (snapshot.status !== "finished" || !snapshot.seat) return "unavailable";
   if (!snapshot.white || !snapshot.black) return "unavailable";
+
+  /* Before the window, and before any outstanding offer: a refusal is an answer, and
+     it stays the answer whether or not the clock later runs out on it. Checking the
+     deadline first would turn "they said no" into "you took too long" two minutes
+     later, for anybody still looking at the page. */
+  if (snapshot.rematchDeclinedBy) return "declined";
 
   /* The window closes on an outstanding offer too, rather than keeping it alive
      until answered. It has to: the stream that would carry the answer shuts at the
@@ -175,7 +201,7 @@ export function rematchPhase(
 export function streamSettled(
   snapshot: Pick<
     GameSnapshot,
-    "status" | "rated" | "ratings" | "rematchId" | "endedAt"
+    "status" | "rated" | "ratings" | "rematchId" | "rematchDeclinedBy" | "endedAt"
   >,
   now: number,
 ): boolean {
@@ -184,5 +210,9 @@ export function streamSettled(
   if (snapshot.rated && snapshot.ratings === null) return false;
   // Agreed: both clients are on their way to the new game and this one is history.
   if (snapshot.rematchId !== null) return true;
+  /* Refused: also history. The only thing this stream was still open for was the
+     answer to the offer, and that is it. Holding it open for the rest of the window
+     would heartbeat at two clients that have already left for the summary. */
+  if (snapshot.rematchDeclinedBy !== null) return true;
   return snapshot.endedAt === null || now - snapshot.endedAt > REMATCH_WINDOW_MS;
 }

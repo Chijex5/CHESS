@@ -32,6 +32,7 @@ function finished(overrides: Partial<GameSnapshot> = {}): GameSnapshot {
     offer: null,
     endedAt: T - 5_000,
     rematchId: null,
+    rematchDeclinedBy: null,
     chatSeq: 0,
     rated: false,
     ratings: null,
@@ -87,6 +88,24 @@ describe("rematchPhase", () => {
     expect(rematchPhase(agreed, T + REMATCH_WINDOW_MS * 10)).toBe("agreed");
   });
 
+  it("reports a refusal to both chairs, and keeps reporting it", () => {
+    /* The seat that said no is the one stored, but the answer is the same from either
+       side: the negotiation is over. And it stays "declined" past the window rather
+       than decaying into "expired" — "they said no" must not become "you took too
+       long" for anyone still looking. */
+    const declined = finished({ rematchDeclinedBy: "black" });
+    expect(rematchPhase(declined, T)).toBe("declined");
+    expect(rematchPhase({ ...declined, seat: "black" }, T)).toBe("declined");
+    expect(rematchPhase(declined, T + REMATCH_WINDOW_MS * 10)).toBe("declined");
+  });
+
+  it("lets an agreement outrank a refusal", () => {
+    /* Cannot happen through the route — a declined row is not acceptable — but the
+       pointer is the stronger fact: if there is a game to go to, go to it. */
+    const both = finished({ rematchId: "ZZ99ZZ", rematchDeclinedBy: "black" });
+    expect(rematchPhase(both, T)).toBe("agreed");
+  });
+
   it("has nothing to offer a spectator, or a game still being played", () => {
     expect(rematchPhase(finished({ seat: null }), T)).toBe("unavailable");
     expect(rematchPhase(finished({ status: "active", endedAt: null }), T)).toBe(
@@ -132,6 +151,11 @@ describe("streamSettled", () => {
   it("closes as soon as a rematch is agreed", () => {
     // Both clients are on their way to the new game; this one has nothing left to say.
     expect(streamSettled(finished({ rematchId: "ZZ99ZZ" }), T)).toBe(true);
+  });
+
+  it("closes as soon as a rematch is refused", () => {
+    // The answer was the last thing the stream was open for.
+    expect(streamSettled(finished({ rematchDeclinedBy: "black" }), T)).toBe(true);
   });
 
   it("closes on an abandoned game", () => {

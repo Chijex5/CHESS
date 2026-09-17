@@ -325,6 +325,18 @@
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum" 1;
   }
+  /* iOS Safari zooms the whole page when a field under 16px takes focus, and the
+     type scale above tops out at 15. That zoom was the "layout changes when the
+     keyboard opens and the send button goes off screen" bug in chat, and the same
+     thing on every other field — the invite code, the username search. Touch
+     screens only: on a desktop 13px in a field is the point. */
+  @media (pointer: coarse) {
+    input,
+    textarea,
+    select {
+      font-size: max(16px, 1em);
+    }
+  }
 }
 
 @layer components {

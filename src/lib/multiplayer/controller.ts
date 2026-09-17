@@ -46,6 +46,27 @@ export function boardFor(snapshot: GameSnapshot | null, pending: PendingMove | n
 
 type PendingMove = { from: string; to: string; promotion?: string; seq: number };
 
+/* Two things the board component wants that chess.js does not hand over directly.
+   Here rather than in the view because the summary page draws the same position. */
+
+/** The last move played, for the board's highlight. */
+export function lastMoveOf(board: Chess): { from: Square; to: Square } | null {
+  const last = board.history({ verbose: true }).at(-1);
+  return last ? { from: last.from, to: last.to } : null;
+}
+
+/** The king in check, if one is. */
+export function checkSquareOf(board: Chess): Square | null {
+  if (!board.inCheck()) return null;
+  const turn = board.turn();
+  for (const row of board.board()) {
+    for (const cell of row) {
+      if (cell?.type === "k" && cell.color === turn) return cell.square;
+    }
+  }
+  return null;
+}
+
 /** Whose turn it is, from the move count rather than from anything we were told. */
 export function turnOf(snapshot: GameSnapshot | null, pending: PendingMove | null): Seat {
   const plies = (snapshot?.sans.length ?? 0) + (pending ? 1 : 0);

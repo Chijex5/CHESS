@@ -8,6 +8,7 @@ import {
   Dumbbell,
   ListOrdered,
   MoreHorizontal,
+  Settings,
   UserRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -107,14 +108,18 @@ export function AppHeader({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            {SECONDARY.map(({ href, label, Icon }) => (
-              <DropdownMenuItem key={href} asChild>
-                <Link href={href} aria-current={isCurrent(href) ? "page" : undefined}>
-                  <Icon className="size-4" aria-hidden />
-                  {label}
-                </Link>
-              </DropdownMenuItem>
-            ))}
+            <DropdownMenuItem asChild>
+              <Link href="/concepts" aria-current={isCurrent("/concepts") ? "page" : undefined}>
+                <BookOpen className="size-4" aria-hidden />
+                Concepts
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/settings" aria-current={isCurrent("/settings") ? "page" : undefined}>
+                <Settings className="size-4" aria-hidden />
+                Settings
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             {/* Rendered as menu rows rather than the icon buttons, so the labels
                 explain what they do. */}
