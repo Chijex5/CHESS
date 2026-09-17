@@ -29,6 +29,8 @@ const MATCH_TTL_SECONDS = 120;
  *  leaving, a laptop that slept. The client beats every 2s, so this is many missed
  *  beats rather than a marginal call. */
 const STALE_MS = 20_000;
+/** Give a real person a brief chance to arrive before filling an empty queue. */
+export const ENGINE_FALLBACK_AFTER_MS = 8_000;
 
 let client: Promise<RedisClientType> | null = null;
 
@@ -142,6 +144,13 @@ export async function dequeue(control: TimeControlId, userId: string): Promise<v
   if (existing) await connection.zRem(key(control), encodeEntry(existing));
 }
 
+/** How long this player has actually waited. Kept server-side so a reloaded tab
+ * cannot skip the real-player grace period. */
+export async function waitedInQueue(control: TimeControlId, userId: string): Promise<number> {
+  const entry = await findEntry(control, userId);
+  return entry ? Math.max(0, Date.now() - entry.joinedAt) : 0;
+}
+
 async function findEntry(
   control: TimeControlId,
   userId: string,
@@ -235,9 +244,109 @@ export async function tryPair(input: {
         return null;
       }
     }
+    /* Both are out of the queue; now make that stick. If the reservation fails, the
+       pair is already being handled by another request — put both back so neither is
+       stranded out of a queue they are not actually matched in, and report no match.
+       The winner's `publishMatch` will reach us on the next beat. */
+    if (!(await reservePair(input.userId, option.entry.userId))) {
+      await connection.zAdd(key(input.control), {
+        score: option.entry.rating,
+        value: option.value,
+      });
+      if (me) {
+        await connection.zAdd(key(input.control), {
+          score: me.rating,
+          value: encodeEntry(me),
+        });
+      }
+      return null;
+    }
+
     return { a: input.userId, b: option.entry.userId };
   }
   return null;
+}
+
+/* ── One pairing at a time ────────────────────────────────────────────────────
+   `tryPair` removes both players from the queue, and that used to be the whole
+   guarantee. It is not enough, because being out of the queue is not a durable state:
+   the client beats every 2s, and `POST /api/queue` enqueues *before* it pairs. So a
+   player who was just claimed by their opponent's request rejoins the queue on their
+   very next beat — and the window they rejoin in is exactly as long as it takes to
+   write the new game to Postgres, because `publishMatch` only happens after that.
+
+   Land a beat in that window and both players pair a second time, each creating their
+   own game. Both boards look correct in isolation. Neither player sees the other's
+   moves, because they are not in the same game — which is precisely what "nothing
+   syncs" turns out to mean.
+
+   A reservation makes "already paired" outlive the queue removal. It is taken with
+   `SET NX` on both players the instant a pairing is won, so a second attempt to pair
+   either of them fails on the lock rather than on an empty queue, and it is released
+   once the game exists and has been published.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+const reservationKey = (userId: string) => `pairing:${userId}`;
+
+/** Long enough to outlive the game write that follows, short enough that a crash
+ *  between reserving and publishing frees the player rather than stranding them. */
+const RESERVATION_TTL_SECONDS = 15;
+
+/**
+ * Claims both players for one pairing, or nobody.
+ *
+ * `SET NX` is the whole mechanism: it succeeds exactly once per key, so of two
+ * concurrent pairings of the same pair, one takes the lock and the other is refused.
+ * If the second player cannot be claimed, the first is released — a half-held
+ * reservation would block a player who was never actually paired.
+ */
+async function reservePair(a: string, b: string): Promise<boolean> {
+  const connection = await redis();
+  if (!connection) return false;
+
+  /* Sorted, and that is the whole reason this works. Two requests pairing the same
+     two people take these locks concurrently; taken in caller order, each grabs one,
+     fails the other and rolls back — nobody is paired, which is a deadlock wearing a
+     retry's clothes. It is the same canonical-ordering trick `pairKey` uses for
+     friendships: put the pair in one order and the race has a winner by construction.
+
+     A failure on the first key means somebody else owns this pairing, so there is
+     nothing to undo. A failure on the second can only be a lock held by an unrelated
+     pairing, and then the first must be given back. */
+  const [first, second] = a < b ? [a, b] : [b, a];
+
+  const tookFirst = await connection.set(reservationKey(first), "1", {
+    NX: true,
+    EX: RESERVATION_TTL_SECONDS,
+  });
+  if (tookFirst === null) return false;
+
+  const tookSecond = await connection.set(reservationKey(second), "1", {
+    NX: true,
+    EX: RESERVATION_TTL_SECONDS,
+  });
+  if (tookSecond === null) {
+    await connection.del(reservationKey(first));
+    return false;
+  }
+
+  return true;
+}
+
+/** Frees both players once their game exists and both have been told about it. */
+export async function releasePair(a: string, b: string): Promise<void> {
+  const connection = await redis();
+  if (!connection) return;
+  await connection.del([reservationKey(a), reservationKey(b)]);
+}
+
+/** Whether this player is mid-pairing. The engine fallback asks, because a player
+ *  whose game is still being written has not "waited too long" — they have already
+ *  been matched and are about to be told so. */
+export async function isReserved(userId: string): Promise<boolean> {
+  const connection = await redis();
+  if (!connection) return false;
+  return (await connection.exists(reservationKey(userId))) === 1;
 }
 
 /** Tells a player which game they were paired into. */

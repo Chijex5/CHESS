@@ -106,6 +106,7 @@ export async function requestHintReason(
   input: { ply: number; fen: string; bestSan: string; side: Side },
   settings: Settings,
   signal: AbortSignal,
+  onlineGameId?: string,
 ) {
   const hint = useHint.getState();
   hint.begin(input.ply);
@@ -120,6 +121,7 @@ export async function requestHintReason(
         bestSan: input.bestSan,
         side: input.side,
         level: settings.level,
+        onlineGameId,
       }),
       signal,
     });
