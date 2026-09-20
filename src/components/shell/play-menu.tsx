@@ -127,7 +127,7 @@ function JoinByCode({
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Join a game</DialogTitle>
-          <DialogDescription className="font-serif text-base">
+          <DialogDescription className="text-base">
             Type the code your opponent gave you. It is the last part of their invite
             link.
           </DialogDescription>

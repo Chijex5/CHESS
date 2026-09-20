@@ -108,7 +108,7 @@ export function BoardMenu({
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Resign this game?</DialogTitle>
-            <DialogDescription className="font-serif text-base">
+            <DialogDescription className="text-base">
               The game ends as a loss and the coach writes up what it has. The moves
               and the notes stay, so you can still review and practise them.
             </DialogDescription>

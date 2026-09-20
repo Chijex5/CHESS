@@ -78,7 +78,7 @@ export function ProfileView() {
 
   return (
     <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6">
-      <header className="rounded-xl border bg-card p-5">
+      <header className="surface-raised rounded-xl p-5">
         <div className="flex flex-wrap items-center gap-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/12 text-primary">
             <Trophy className="size-5" aria-hidden />
@@ -286,7 +286,7 @@ function Endings({ endings }: { endings: Statistics["endings"] }) {
           <div key={heading}>
             <h3 className="text-xs font-medium text-muted-foreground">{heading}</h3>
             {rows.length === 0 ? (
-              <p className="mt-1.5 font-serif text-sm text-muted-foreground">None yet.</p>
+              <p className="mt-1.5 text-sm text-muted-foreground">None yet.</p>
             ) : (
               <ul className="mt-1.5 space-y-1">
                 {rows.map(([ending, count]) => (
@@ -365,10 +365,10 @@ function History({ summaries }: { summaries: GameSummary[] }) {
 
 function Empty() {
   return (
-    <div className="mt-8 rounded-xl border bg-card p-8 text-center">
+    <div className="mt-8 surface-raised rounded-xl p-8 text-center">
       <Swords className="mx-auto size-7 text-muted-foreground/40" aria-hidden />
       <h2 className="mt-3 text-lg font-semibold">No games yet</h2>
-      <p className="mx-auto mt-2 max-w-sm font-serif text-base leading-relaxed text-muted-foreground">
+      <p className="mx-auto mt-2 max-w-sm text-base leading-relaxed text-muted-foreground">
         Play one and this page fills in: your record by colour and speed, how your
         accuracy moves, and which ideas keep costing you games.
       </p>
@@ -391,13 +391,13 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mt-5 rounded-xl border bg-card p-5">
+    <section className="mt-5 surface-raised rounded-xl p-5">
       <div className="flex items-center gap-2">
         <Icon className="size-4 shrink-0 text-primary" aria-hidden />
         <h2 className="text-sm font-semibold">{title}</h2>
       </div>
       {note && (
-        <p className="mt-1 font-serif text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
           {note}
         </p>
       )}

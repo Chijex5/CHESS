@@ -18,7 +18,7 @@ export function ConceptDrills({ slug }: { slug: string }) {
   const drills = drillsFrom(cited);
 
   return (
-    <section className="mt-8 rounded-xl border bg-card p-4">
+    <section className="mt-8 surface-raised rounded-xl p-4">
       <h2 className="flex items-center gap-2 text-sm font-semibold">
         <Dumbbell className="size-4 text-primary" aria-hidden />
         Practise it

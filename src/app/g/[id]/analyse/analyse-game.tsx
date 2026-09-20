@@ -104,7 +104,7 @@ export function AnalyseGame({ gameId }: { gameId: string }) {
         <div>
           <TriangleAlert className="mx-auto size-7 text-q-inaccuracy-ink" aria-hidden />
           <h1 className="mt-3 text-lg font-semibold">Nothing to analyse</h1>
-          <p className="mt-2 font-serif text-base leading-relaxed text-muted-foreground">
+          <p className="mt-2 text-base leading-relaxed text-muted-foreground">
             {error}
           </p>
           <Button asChild className="mt-5">
@@ -125,7 +125,7 @@ export function AnalyseGame({ gameId }: { gameId: string }) {
       <div className="w-full">
         <Cpu className="mx-auto size-7 animate-pulse text-primary" aria-hidden />
         <h1 className="mt-3 text-lg font-semibold">Working through the game</h1>
-        <p className="mt-2 font-serif text-base leading-relaxed text-muted-foreground">
+        <p className="mt-2 text-base leading-relaxed text-muted-foreground">
           {status}
         </p>
 

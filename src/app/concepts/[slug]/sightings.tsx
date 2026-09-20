@@ -28,7 +28,7 @@ export function ConceptSightings({ slug }: { slug: string }) {
             <li key={annotation.ply}>
               <Link
                 href="/review"
-                className="flex items-start gap-2.5 rounded-lg border bg-card p-3 transition-colors hover:border-primary/30"
+                className="flex items-start gap-2.5 surface-raised rounded-lg p-3 transition-colors hover:border-primary/30"
               >
                 <span className="tnum shrink-0 font-mono text-sm font-semibold">
                   {annotation.moveNumber}

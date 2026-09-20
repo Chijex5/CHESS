@@ -76,7 +76,7 @@ export function GameResultCard({
       >
         {headline}
       </Headline>
-      <p className="mt-1 font-serif text-base text-muted-foreground">
+      <p className="mt-1 text-base text-muted-foreground">
         {ending ? (ENDING[ending] ?? ending) : ""}
         {opponent && <> · against {opponent.username}</>}
       </p>

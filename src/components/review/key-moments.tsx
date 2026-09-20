@@ -50,7 +50,7 @@ export function KeyMoments({
             key={a.ply}
             type="button"
             onClick={() => onSelect?.(a.ply)}
-            className="rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/30"
+            className="surface-raised rounded-xl p-3 text-left transition-colors hover:border-primary/30"
           >
             <div className="flex items-center gap-2">
               <span className="tnum font-mono text-sm font-semibold">

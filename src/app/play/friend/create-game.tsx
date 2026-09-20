@@ -80,7 +80,7 @@ export function CreateGame() {
           expects the hint button to be there will go looking for it. */}
       <div className="rounded-lg border border-dashed p-3">
         <p className="text-xs font-medium">No engine help in an online game</p>
-        <p className="mt-1 font-serif text-xs leading-relaxed text-muted-foreground">
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
           The hint button, the evaluation bar and the coach are all off while you
           play — against a person they would be cheating. Everything arrives when the
           game ends, including the drills from your own mistakes.

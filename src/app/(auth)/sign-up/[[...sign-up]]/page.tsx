@@ -11,7 +11,7 @@ export default async function SignUpPage({ searchParams }: PageProps<"/sign-up/[
     <>
       <div className="mb-5 text-center">
         <h1 className="text-xl font-semibold tracking-tight">Create an account</h1>
-        <p className="mt-1.5 font-serif text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
           Your username is what an opponent sees across the board. Everything
           against the engine works without an account at all.
         </p>

@@ -248,7 +248,7 @@ export function SettingsPanel({
                       </span>
                     )}
                   </span>
-                  <span className="mt-0.5 block font-serif text-xs leading-relaxed text-muted-foreground">
+                  <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
                     {o.blurb}
                   </span>
                 </button>

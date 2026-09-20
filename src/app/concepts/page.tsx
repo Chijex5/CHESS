@@ -57,7 +57,7 @@ export default function ConceptsPage() {
                   <li key={c.slug}>
                     <Link
                       href={`/concepts/${c.slug}`}
-                      className="group flex h-full flex-col rounded-xl border bg-card p-3.5 transition-colors hover:border-primary/30"
+                      className="group flex h-full flex-col surface-raised rounded-xl p-3.5 transition-colors hover:border-primary/30"
                     >
                       <span className="flex items-center gap-2 text-sm font-medium">
                         <BookOpen className="size-3.5 text-primary" aria-hidden />

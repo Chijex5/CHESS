@@ -294,7 +294,7 @@ function ChallengeDialog({
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Challenge {person?.username}</DialogTitle>
-          <DialogDescription className="font-serif">
+          <DialogDescription>
             The game waits at the board with their name on it. Nobody else can take the
             seat, and they will find it whenever they next look.
           </DialogDescription>
@@ -355,7 +355,7 @@ function Group({
         {people > 0 && <span className="tnum ms-1.5 font-mono">{people}</span>}
       </h3>
       {people === 0 ? (
-        <p className="mt-1.5 font-serif text-sm text-muted-foreground">{empty}</p>
+        <p className="mt-1.5 text-sm text-muted-foreground">{empty}</p>
       ) : (
         <ul className="mt-1.5 divide-y">{children}</ul>
       )}

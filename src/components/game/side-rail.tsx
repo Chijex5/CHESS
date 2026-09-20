@@ -54,11 +54,11 @@ export function SideRail({
 
   return (
     <section
-      className={cn("flex min-h-0 flex-col rounded-xl border bg-sidebar", className)}
+      className={cn("surface-raised flex min-h-0 flex-col rounded-xl", className)}
       aria-label={tab === "coach" ? "Coach commentary" : "Moves"}
     >
       <div className="shrink-0 p-2">
-        <div className="flex gap-1 rounded-lg bg-muted p-1" role="tablist">
+        <div className="surface-sunken flex gap-1 rounded-lg p-1" role="tablist">
           {tabs.map(({ value, Icon, label, count }) => (
             <button
               key={value}
@@ -68,8 +68,11 @@ export function SideRail({
               onClick={() => onTab(value)}
               className={cn(
                 "flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md text-sm font-medium transition-colors",
+                /* The selected tab is the thing sitting proud of the well the pair
+                   are cut into — the same raised/sunken pairing the rest of the app
+                   now uses, rather than a card with a hairline shadow. */
                 tab === value
-                  ? "bg-card text-foreground shadow-sm"
+                  ? "surface-raised text-foreground"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -90,9 +93,7 @@ export function SideRail({
         <div className="absolute inset-0">
           {tab === "moves" ? (
             rows.length === 0 ? (
-              <p className="p-3 font-serif text-sm text-muted-foreground">
-                No moves yet.
-              </p>
+              <p className="p-3 text-sm text-muted-foreground">No moves yet.</p>
             ) : (
               <MoveList rows={rows} activePly={activePly} onSelect={onSelect} />
             )

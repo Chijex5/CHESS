@@ -51,7 +51,7 @@ export function CoachPanel({
 
   return (
     <section
-      className={cn("flex min-h-0 flex-col rounded-xl border bg-sidebar", className)}
+      className={cn("surface-raised flex min-h-0 flex-col rounded-xl", className)}
       aria-label="Coach commentary"
     >
       {showHeader && (

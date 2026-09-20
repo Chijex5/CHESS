@@ -106,7 +106,7 @@ export function SummaryView({ gameId }: { gameId: string }) {
         {/* The verdict and the doors, first on a phone and beside the board on a
             desktop. The rematch takes the whole footer while it is being negotiated
             — it is the only thing here waiting on a decision. */}
-        <section className="rounded-xl border bg-card lg:order-2">
+        <section className="surface-raised rounded-xl lg:order-2">
           <GameResultCard snapshot={snapshot} className="px-5 pt-6" />
 
           <dl className="mx-5 mt-4 grid grid-cols-2 gap-x-3 gap-y-1.5 border-t pt-4 text-xs">
@@ -166,12 +166,12 @@ export function SummaryView({ gameId }: { gameId: string }) {
               checkSquare={checkSquareOf(board)}
             />
           </div>
-          <div className="mt-4 flex h-[16rem] flex-col rounded-xl border bg-sidebar lg:h-[20rem]">
+          <div className="surface-raised mt-4 flex h-[16rem] flex-col rounded-xl lg:h-[20rem]">
             <h2 className="shrink-0 border-b px-3 py-2 text-sm font-semibold">Moves</h2>
             <div className="relative min-h-0 flex-1">
               <div className="absolute inset-0">
                 {rows.length === 0 ? (
-                  <p className="p-3 font-serif text-sm text-muted-foreground">
+                  <p className="p-3 text-sm text-muted-foreground">
                     No moves were played.
                   </p>
                 ) : (
@@ -237,7 +237,7 @@ function Empty({
       <div>
         <Icon className="mx-auto size-7 text-muted-foreground/50" aria-hidden />
         <h1 className="mt-3 text-lg font-semibold">{title}</h1>
-        <p className="mt-2 font-serif text-base leading-relaxed text-muted-foreground">
+        <p className="mt-2 text-base leading-relaxed text-muted-foreground">
           {body}
         </p>
         <Button asChild className="mt-5">

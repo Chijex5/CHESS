@@ -14,7 +14,7 @@ export default async function SignInPage({ searchParams }: PageProps<"/sign-in/[
     <>
       <div className="mb-5 text-center">
         <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
-        <p className="mt-1.5 font-serif text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
           Only needed to play other people. Everything against the engine works
           without one.
         </p>

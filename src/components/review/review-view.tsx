@@ -204,7 +204,7 @@ export function ReviewView({ gameId }: { gameId?: string }) {
           <h1 className="mt-3 text-lg font-semibold">
             {unavailable ? "This game has not been analysed yet" : "No game to review yet"}
           </h1>
-          <p className="mt-2 font-serif text-base leading-relaxed text-muted-foreground">
+          <p className="mt-2 text-base leading-relaxed text-muted-foreground">
             {unavailable
               ? "Nothing has run the engine over it. That takes a minute and then it is kept."
               : "Play a game and this page fills in: accuracy, the evaluation curve, your biggest swings, and the themes the coach kept citing."}
@@ -233,7 +233,7 @@ export function ReviewView({ gameId }: { gameId?: string }) {
       className="mx-auto w-full max-w-[100rem] flex-1 px-3 py-4 sm:px-5"
       data-board={settings.boardTheme}
     >
-      <header className="rounded-xl border bg-card p-4">
+      <header className="surface-raised rounded-xl p-4">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="grid size-9 place-items-center rounded-lg bg-primary/12 text-primary">
             <Trophy className="size-4.5" aria-hidden />
@@ -283,7 +283,7 @@ export function ReviewView({ gameId }: { gameId?: string }) {
               </span>
             </div>
             <QualityTally qualities={qualities} />
-            <p className="mt-2.5 font-serif text-xs leading-snug text-muted-foreground">
+            <p className="mt-2.5 text-xs leading-snug text-muted-foreground">
               Accuracy uses Lichess&apos; win%-based curve, averaged per move, so a
               single dropped pawn from equality reads as an inaccuracy rather than
               a disaster.
@@ -294,7 +294,7 @@ export function ReviewView({ gameId }: { gameId?: string }) {
 
       <Panel
         title="Evaluation"
-        className="mt-4 rounded-xl border bg-card p-4"
+        className="mt-4 surface-raised rounded-xl p-4"
         action={
           <span className="tnum font-mono text-2xs text-muted-foreground">
             move {Math.ceil(ply / 2) || 1} of {Math.ceil(total / 2)}
@@ -312,7 +312,7 @@ export function ReviewView({ gameId }: { gameId?: string }) {
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_21rem] xl:grid-cols-[15rem_minmax(0,1fr)_22rem]">
         <aside className="hidden min-h-0 xl:block">
-          <div className="flex h-[34rem] flex-col rounded-xl border bg-sidebar">
+          <div className="flex h-[34rem] flex-col rounded-xl surface-raised">
             <h2 className="border-b px-3 py-2 text-sm font-semibold">Notation</h2>
             <div className="min-h-0 flex-1">
               <MoveList rows={rows} activePly={ply} onSelect={setViewPly} />
@@ -375,7 +375,7 @@ export function ReviewView({ gameId }: { gameId?: string }) {
 
       <Panel
         title="What to practise"
-        className="mt-6 rounded-xl border bg-card p-4"
+        className="mt-6 surface-raised rounded-xl p-4"
         action={
           annotations.length > 0 ? (
             <Button size="sm" className="h-8 text-xs" asChild>
@@ -386,7 +386,7 @@ export function ReviewView({ gameId }: { gameId?: string }) {
           ) : undefined
         }
       >
-        <p className="mb-3 font-serif text-sm leading-relaxed text-muted-foreground">
+        <p className="mb-3 text-sm leading-relaxed text-muted-foreground">
           Themes the coach cited while explaining your mistakes, most frequent first.
           Reading them is worth less than replaying the positions they came from.
         </p>

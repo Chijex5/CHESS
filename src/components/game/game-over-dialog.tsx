@@ -86,7 +86,7 @@ export function GameOverDialog({
           <DialogTitle className={cn("mt-3 text-xl font-semibold tracking-tight", ink)}>
             {result.outcome}
           </DialogTitle>
-          <DialogDescription className="mt-1 font-serif text-base">
+          <DialogDescription className="mt-1 text-base">
             {result.detail}
           </DialogDescription>
         </div>

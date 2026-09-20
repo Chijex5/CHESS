@@ -290,7 +290,7 @@ export function OnlineView({ gameId }: { gameId: string }) {
         <div>
           <LogIn className="mx-auto size-7 text-muted-foreground/50" aria-hidden />
           <h1 className="mt-3 text-lg font-semibold">Sign in to take the seat</h1>
-          <p className="mt-2 font-serif text-base leading-relaxed text-muted-foreground">
+          <p className="mt-2 text-base leading-relaxed text-muted-foreground">
             Your opponent needs something to call you, and the result needs somewhere
             to go. Playing the engine still needs no account.
           </p>
@@ -420,7 +420,7 @@ export function OnlineView({ gameId }: { gameId: string }) {
             the same reason: the board gets the column back, and there is one place to
             look rather than two. The engine version tabs the coach against the notation;
             here there is no coach, and the other person is the thing worth switching to. */}
-        <aside className="hidden min-h-0 flex-col rounded-xl border bg-sidebar lg:flex">
+        <aside className="surface-raised hidden min-h-0 flex-col rounded-xl lg:flex">
           <div
             role="tablist"
             aria-label="Moves and chat"
@@ -453,7 +453,7 @@ export function OnlineView({ gameId }: { gameId: string }) {
             {rail === "moves" ? (
               <div className="absolute inset-0">
                 {rows.length === 0 ? (
-                  <p className="p-3 font-serif text-sm text-muted-foreground">
+                  <p className="p-3 text-sm text-muted-foreground">
                     No moves yet.
                   </p>
                 ) : (

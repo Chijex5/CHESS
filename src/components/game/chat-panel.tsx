@@ -85,7 +85,7 @@ export function ChatPanel({ gameId, className }: { gameId: string; className?: s
     <div className={cn("flex min-h-0 flex-col", className)}>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
         {shown.length === 0 ? (
-          <p className="py-6 text-center font-serif text-sm text-muted-foreground">
+          <p className="py-6 text-center text-sm text-muted-foreground">
             {muted ? "Muted for this game." : "Nothing said yet."}
           </p>
         ) : (

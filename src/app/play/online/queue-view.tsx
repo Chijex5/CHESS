@@ -107,7 +107,7 @@ export function QueueView() {
             {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
           </p>
 
-          <p className="mt-3 font-serif text-sm leading-relaxed text-muted-foreground">
+          <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
             {timeControlFor(timeControl).label} · searching{" "}
             {pairingWindowLabel(waited)} of your rating.
           </p>
@@ -138,7 +138,7 @@ export function QueueView() {
   return (
     <div>
       <h1 className="text-2xl font-semibold tracking-tight">Play a stranger</h1>
-      <p className="mt-2 font-serif text-base leading-relaxed text-muted-foreground">
+      <p className="mt-2 text-base leading-relaxed text-muted-foreground">
         Paired by rating. These games are rated, so they move your number — and the
         engine stays out of them entirely, same as playing a friend.
       </p>

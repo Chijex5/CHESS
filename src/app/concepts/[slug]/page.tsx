@@ -116,7 +116,7 @@ function Panel({
   body: string;
 }) {
   return (
-    <section className="rounded-xl border bg-card p-4">
+    <section className="surface-raised rounded-xl p-4">
       <h2 className="flex items-center gap-2 text-sm font-semibold">
         {Icon && <Icon className="size-4 text-primary" aria-hidden />}
         {title}

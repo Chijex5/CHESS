@@ -28,12 +28,12 @@ export function InvitePanel({ gameId }: { gameId: string }) {
 
   return (
     <div className="absolute inset-0 z-30 grid place-items-center bg-background/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-xl border bg-card p-4 shadow-lg">
+      <div className="w-full max-w-sm surface-raised rounded-xl p-4 shadow-lg">
         <p className="flex items-center gap-2 text-sm font-medium">
           <Loader2 className="size-3.5 animate-spin text-primary" aria-hidden />
           Waiting for your opponent
         </p>
-        <p className="mt-1 font-serif text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
           Send them either of these. Nobody&apos;s clock starts until they arrive.
         </p>
 

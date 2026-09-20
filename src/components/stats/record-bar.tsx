@@ -78,7 +78,7 @@ export function StatTile({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-xl border bg-card p-4", className)}>
+    <div className={cn("surface-raised rounded-xl p-4", className)}>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1.5 text-2xl font-semibold">{value}</p>
       {note && <p className="mt-0.5 text-2xs text-muted-foreground">{note}</p>}
