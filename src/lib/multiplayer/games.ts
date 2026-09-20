@@ -9,7 +9,6 @@ import {
   HOUSE_ID,
   HOUSE_USERNAME,
   botDisplayName,
-  housePlayer,
   isHouse,
 } from "./bot";
 import { gameId as newGameId } from "./ids";

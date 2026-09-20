@@ -1,0 +1,9 @@
+{
+  "env": {
+    "MODEL": "deepseek-v4-flash",
+    "BASE_URL": "https://agentrouter.org",
+    "API_KEY": "sk-hOavQAXrLMeA6xHAmy0Y6o1Hh0LseGRFDZYlFpLBMX9LI3Dx"
+  },
+  "thinkingEnabled": true,
+  "reasoningEffort": "high"
+}
