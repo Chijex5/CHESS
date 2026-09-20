@@ -16,6 +16,7 @@ export function OnlineClock({ seat, className }: { seat: Seat; className?: strin
   return (
     <ClockFace
       side={seat}
+      total={initialMs}
       read={() => clocksNow(useOnline.getState().snapshot)[seat]}
       running={() => {
         const snapshot = useOnline.getState().snapshot;

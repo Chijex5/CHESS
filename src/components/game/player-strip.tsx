@@ -3,8 +3,13 @@ import { cn } from "@/lib/utils";
 import { CapturedPieces } from "./captured-pieces";
 import type { PieceColor, PieceType } from "@/lib/chess/types";
 
-/** One player's row: name, strength, captured tray. Mirrors the two sides of a
- *  real board so the eye finds "whose turn" without reading. */
+/* One player's row: name, strength, captured tray, clock. Mirrors the two sides of
+   a real board so the eye finds "whose turn" without reading.
+
+   The active state used to be a 6% tint and a slightly warmer border — a distinction
+   you had to look for, on a row that is supposed to answer "is it my move?" from
+   across the table. It is now a lit surface against a recessed one, with a rail down
+   the leading edge. Same information, no reading required. */
 export function PlayerStrip({
   name,
   sublabel,
@@ -31,8 +36,10 @@ export function PlayerStrip({
   return (
     <div
       className={cn(
-        "flex h-11 items-center gap-2.5 rounded-lg border bg-card px-3 transition-colors",
-        active ? "border-primary/45 bg-primary/[0.06]" : "border-border",
+        "flex h-14 items-center gap-2.5 rounded-lg border border-s-[3px] px-3 transition-colors",
+        active
+          ? "border-border border-s-primary bg-card"
+          : "border-transparent border-s-transparent bg-card/40",
         className,
       )}
     >
@@ -44,7 +51,9 @@ export function PlayerStrip({
         )}
         aria-hidden
       />
-      <span className="truncate text-sm font-medium">{name}</span>
+      <span className={cn("truncate text-sm font-medium", !active && "text-muted-foreground")}>
+        {name}
+      </span>
       {sublabel && (
         <span className="tnum shrink-0 font-mono text-2xs text-muted-foreground">
           {sublabel}

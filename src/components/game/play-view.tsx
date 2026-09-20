@@ -288,11 +288,11 @@ export function PlayView() {
           {/* One stack, capped to roughly the width the board can actually reach, so
               the player rows and the controls line up with the board instead of
               running past it into empty column. `100cqh` is this column's height;
-              the two `h-11` rows, the controls and three gaps take 9.25rem of it,
-              and the eval bar gives ~2.75rem back on the horizontal — hence 6.5rem.
+              the two `h-14` rows, the controls and three gaps take 10.75rem of it,
+              and the eval bar gives ~2.75rem back on the horizontal — hence 8rem.
               Erring generous on purpose: the board has its own height cap below, so
               slack here costs a few pixels of alignment and never an overflow. */}
-          <div className="mx-auto flex min-h-0 w-full flex-1 flex-col gap-2 lg:max-w-[calc(100cqh-6.5rem)]">
+          <div className="mx-auto flex min-h-0 w-full flex-1 flex-col gap-2 lg:max-w-[calc(100cqh-8rem)]">
           <PlayerStrip
             name="Stockfish 18"
             sublabel={`${opponentFor(settings.elo).name} · ${settings.elo}`}
@@ -331,7 +331,7 @@ export function PlayView() {
               {/* Below `lg` the page scrolls, so the cap there is still a guess at
                   the viewport: the header, two rows, the controls and the dock all
                   have to share a phone screen with the board. */}
-              <div className="relative mx-auto w-full min-w-0 max-w-[min(100%,calc(100svh-21rem))] lg:max-w-[min(100%,100cqh)]">
+              <div className="relative mx-auto w-full min-w-0 max-w-[min(100%,calc(100svh-22.5rem))] lg:max-w-[min(100%,100cqh)]">
                 <ChessBoard
                   fen={fen}
                   flipped={game.flipped}

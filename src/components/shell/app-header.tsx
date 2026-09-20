@@ -26,15 +26,15 @@ import { AccountButton } from "./account-button";
 import { PlayMenu } from "./play-menu";
 
 /* ── The header ───────────────────────────────────────────────────────────────
-   It had nine tap targets in 390px, five of them unlabelled icons that no first-time
-   visitor could tell apart — and adding a third way to start a game made it worse.
+   From `sm` up this is the navigation: a wordmark, the ways to start a game, and the
+   four destinations, flat and labelled.
 
-   Two changes. Starting a game became a menu, because there are now genuinely three
-   ways to do it and one link cannot carry them. And on a phone the three secondary
-   destinations collapse behind one control, along with sound and theme, which are
-   settings rather than places. That is four targets on mobile instead of nine, and
-   everything keeps a label at every size — a labelled menu you have to open beats
-   five icons you have to guess at.
+   Below `sm` it is not. `TabBar` sits at the bottom of the same shell holding Home,
+   Play, Review, Practise and Profile where a thumb can reach them, so a phone having
+   a second copy of those five links behind a "More" glyph at the top of the screen
+   was two navigations competing to be the answer. What is left up here on a phone is
+   what a tab bar cannot hold: the things that are settings rather than places, and
+   who you are signed in as.
    ─────────────────────────────────────────────────────────────────────────── */
 const SECONDARY = [
   { href: "/profile", label: "Profile", Icon: UserRound },
@@ -74,17 +74,17 @@ export function AppHeader({
         </span>
       </Link>
 
-      <nav className="ms-1 flex min-w-0 items-center gap-0.5">
+      {/* The whole nav row is `sm` and up. On a phone the tab bar is the navigation. */}
+      <nav className="ms-1 hidden min-w-0 items-center gap-0.5 sm:flex">
         <PlayMenu active={playing} />
 
-        {/* Flat from sm up, where the labels fit. */}
         {SECONDARY.map(({ href, label, Icon }) => (
           <Link
             key={href}
             href={href}
             aria-current={isCurrent(href) ? "page" : undefined}
             className={cn(
-              "hidden h-8 items-center gap-1.5 rounded-md px-2 text-sm transition-colors sm:flex",
+              "flex h-8 items-center gap-1.5 rounded-md px-2 text-sm transition-colors",
               isCurrent(href)
                 ? "bg-accent font-medium text-accent-foreground"
                 : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -99,10 +99,10 @@ export function AppHeader({
       <div className="ms-auto flex shrink-0 items-center gap-0.5">
         {right}
 
-        {/* Phones get one control holding the rest. */}
+        {/* What a tab bar cannot hold: settings rather than places. */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="ghost" className="size-8 sm:hidden">
+            <Button size="icon-sm" variant="ghost" className="sm:hidden">
               <MoreHorizontal className="size-4" aria-hidden />
               <span className="sr-only">More</span>
             </Button>

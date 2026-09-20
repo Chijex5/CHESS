@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
+  Check,
   ClipboardList,
   Flag,
   Handshake,
@@ -322,7 +323,7 @@ export function OnlineView({ gameId }: { gameId: string }) {
     >
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem] lg:grid-rows-[minmax(0,1fr)]">
         <main className="flex min-h-0 min-w-0 flex-col lg:[container-type:size]">
-          <div className="mx-auto flex min-h-0 w-full flex-1 flex-col gap-2 lg:max-w-[calc(100cqh-6.5rem)]">
+          <div className="mx-auto flex min-h-0 w-full flex-1 flex-col gap-2 lg:max-w-[calc(100cqh-8rem)]">
             <OpponentStrip
               player={players[theirSeat]}
               seat={theirSeat}
@@ -337,7 +338,7 @@ export function OnlineView({ gameId }: { gameId: string }) {
             />
 
             <div className="grid min-h-0 flex-1 place-items-center lg:min-h-[15rem] lg:[container-type:size]">
-              <div className="relative mx-auto w-full min-w-0 max-w-[min(100%,calc(100svh-19rem))] lg:max-w-[min(100%,100cqh)]">
+              <div className="relative mx-auto w-full min-w-0 max-w-[min(100%,calc(100svh-20.5rem))] lg:max-w-[min(100%,100cqh)]">
                 <ChessBoard
                   fen={fen}
                   flipped={flipped}
@@ -601,30 +602,36 @@ function StatusLine({
       : null;
 
   if (theirOffer) {
+    /* Not the h-9 status line. The game has stopped and is waiting on you, and that
+       deserves to look different from "it is your move" — a banner that flashes once
+       as it lands, with the two answers colour-coded and thumb-sized. The previous
+       version was a 12px sentence and two 28px ghost buttons, which is a web form
+       asking politely, on the one screen where nobody is reading carefully. */
     return (
-      <div className="flex h-9 shrink-0 items-center gap-2 px-0.5">
-        <Handshake className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <p className="min-w-0 flex-1 truncate text-xs font-medium">
+      <div className="flash-once flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-primary/40 bg-primary/[0.07] px-3 py-2">
+        <Handshake className="size-4 shrink-0 text-primary" aria-hidden />
+        <p className="min-w-0 flex-1 text-sm font-semibold" aria-live="assertive">
           Your opponent offers a draw.
         </p>
-        <Button
-          size="sm"
-          variant="secondary"
-          className="h-7 shrink-0 text-xs"
-          disabled={busy}
-          onClick={() => void act("accept-draw")}
-        >
-          Accept
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 shrink-0 text-xs"
-          disabled={busy}
-          onClick={() => void act("decline-draw")}
-        >
-          <X className="size-3.5" aria-hidden /> Decline
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          <Button
+            size="sm"
+            className="h-9 bg-q-good/15 px-4 text-sm font-semibold text-q-good-ink hover:bg-q-good/25"
+            disabled={busy}
+            onClick={() => void act("accept-draw")}
+          >
+            <Check className="size-4" aria-hidden /> Accept
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-9 px-4 text-sm font-semibold text-q-blunder-ink hover:bg-q-blunder/15"
+            disabled={busy}
+            onClick={() => void act("decline-draw")}
+          >
+            <X className="size-4" aria-hidden /> Decline
+          </Button>
+        </div>
       </div>
     );
   }

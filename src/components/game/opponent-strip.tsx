@@ -40,8 +40,10 @@ export function OpponentStrip({
   return (
     <div
       className={cn(
-        "flex h-11 items-center gap-2.5 rounded-lg border bg-card px-3 transition-colors",
-        active ? "border-primary/45 bg-primary/[0.06]" : "border-border",
+        "flex h-14 items-center gap-2.5 rounded-lg border border-s-[3px] px-3 transition-colors",
+        active
+          ? "border-border border-s-primary bg-card"
+          : "border-transparent border-s-transparent bg-card/40",
         className,
       )}
     >
@@ -61,7 +63,12 @@ export function OpponentStrip({
         </span>
       ) : (
         <>
-          <span className="truncate text-sm font-medium">
+          <span
+            className={cn(
+              "truncate text-sm font-medium",
+              !active && "text-muted-foreground",
+            )}
+          >
             {player?.username ?? "Unknown"}
           </span>
           {player && (

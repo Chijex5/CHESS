@@ -16,11 +16,13 @@ export function Clock({
   className?: string;
 }) {
   const enabled = useClock((state) => state.enabled);
+  const initialMs = useClock((state) => state.initialMs);
   if (!enabled) return null;
 
   return (
     <ClockFace
       side={side}
+      total={initialMs}
       read={() => remainingNow(useClock.getState(), side)}
       running={() => useClock.getState().running === side}
       onFlag={(who) => {

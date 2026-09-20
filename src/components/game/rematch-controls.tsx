@@ -95,21 +95,33 @@ export function RematchControls({
   }
 
   if (phase === "received") {
+    /* An offer that has landed on you. Flashed once and colour-coded, the same as a
+       draw offer under the board: this is the one state here that is waiting on a
+       decision, and it used to look identical to the button that makes one. */
     return (
-      <div className={cn("flex items-center gap-2", stack && "w-full", className)}>
+      <div
+        className={cn(
+          "flash-once flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/[0.07] px-2.5 py-1.5",
+          stack && "w-full",
+          className,
+        )}
+      >
         <p
           className={cn(
-            "min-w-0 flex-1 truncate font-medium",
+            "min-w-0 flex-1 truncate font-semibold",
             stack ? "text-sm" : "text-xs",
           )}
+          aria-live="assertive"
         >
           <Swords className="me-1.5 inline size-3.5 align-[-2px]" aria-hidden />
           They want a rematch.
         </p>
         <Button
           size={size}
-          variant={stack ? "default" : "secondary"}
-          className={cn("shrink-0", height)}
+          className={cn(
+            "shrink-0 bg-q-good/15 font-semibold text-q-good-ink hover:bg-q-good/25",
+            stack ? "h-11" : "h-8 text-xs",
+          )}
           disabled={busy}
           onClick={() => void act("accept-rematch")}
         >
@@ -118,7 +130,10 @@ export function RematchControls({
         <Button
           size={size}
           variant="ghost"
-          className={cn("shrink-0", height)}
+          className={cn(
+            "shrink-0 font-semibold text-q-blunder-ink hover:bg-q-blunder/15",
+            stack ? "h-11" : "h-8 text-xs",
+          )}
           disabled={busy}
           onClick={() => void act("decline-rematch")}
         >

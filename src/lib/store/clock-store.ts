@@ -17,6 +17,9 @@ import type { Side } from "@/lib/chess/types";
 type ClockState = {
   /** False when the time control is "No clock" — nothing renders, nothing ticks. */
   enabled: boolean;
+  /** What each side started with. Kept so the clock can draw how much of its time
+   *  is left as a quantity rather than only as a number. */
+  initialMs: number;
   incrementMs: number;
   /** Banked as of the last switch. */
   remaining: Record<Side, number>;
@@ -40,6 +43,7 @@ type ClockActions = {
 
 const empty: ClockState = {
   enabled: false,
+  initialMs: 0,
   incrementMs: 0,
   remaining: { white: 0, black: 0 },
   running: null,
@@ -64,6 +68,7 @@ export const useClock = create<ClockState & ClockActions>()(
         set({
           ...empty,
           enabled: initialMs > 0,
+          initialMs,
           incrementMs,
           remaining: { white: initialMs, black: initialMs },
         }),
@@ -100,6 +105,7 @@ export const useClock = create<ClockState & ClockActions>()(
          Closing the tab pauses the clock. */
       partialize: (state) => ({
         enabled: state.enabled,
+        initialMs: state.initialMs,
         incrementMs: state.incrementMs,
         remaining: state.remaining,
         flagged: state.flagged,
